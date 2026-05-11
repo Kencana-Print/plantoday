@@ -1,8 +1,10 @@
+/* eslint-disable react/no-unstable-nested-components */
 /* eslint-disable react-native/no-inline-styles */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -14,11 +16,13 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Toast from 'react-native-toast-message';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   createPenawaran,
+  getMasterPermintaanHargaForPenawaran,
   getMasterPerusahaan,
+  type PenawaranPermintaanHargaOption,
 } from '../../services/penawaranApi';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useAuth } from '../../context/authContext';
 import { usePressGuard } from '../../utils/usePressGuard';
 import { PENAWARAN_SHADOW, PENAWARAN_THEME } from './penawaranTheme';
@@ -34,6 +38,7 @@ const DIVISI_OPTIONS = [
 ];
 
 type DraftDetail = {
+  __rowId: string;
   nama_barang: string;
   bahan: string;
   no_permintaan: string;
@@ -170,7 +175,11 @@ const getPerusahaanTtdMapping = (perusahaanNama: string) => {
   return PENAWARAN_TTD_MAP[key] || { ttd: '', ttd_jabatan: '' };
 };
 
+const createRowId = () =>
+  `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 const buildEmptyDetail = (): DraftDetail => ({
+  __rowId: createRowId(),
   nama_barang: '',
   bahan: '',
   no_permintaan: '',
@@ -183,7 +192,6 @@ const buildEmptyDetail = (): DraftDetail => ({
 
 export default function PenawaranCreateScreen({ navigation, route }: any) {
   const { user, token } = useAuth();
-  const insets = useSafeAreaInsets();
   const runGuardedPress = usePressGuard();
   const isManager = useMemo(
     () =>
@@ -210,8 +218,8 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
     [user?.sales_kode, user?.sal_kode, user?.kode_sales, user?.spk_sal_kode],
   );
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showDivisiOptions, setShowDivisiOptions] = useState(false);
   const [showTipeOptions, setShowTipeOptions] = useState(false);
   const [showPerusahaanOptions, setShowPerusahaanOptions] = useState(false);
   const [loadingPerusahaanOptions, setLoadingPerusahaanOptions] =
@@ -221,6 +229,23 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
   >([]);
   const [nomorPenawaranSearch, setNomorPenawaranSearch] = useState('');
   const [selectedExistingNomor, setSelectedExistingNomor] = useState('');
+  const [permintaanSearchByRow, setPermintaanSearchByRow] = useState<
+    Record<number, string>
+  >({});
+  const [permintaanOptionsByRow, setPermintaanOptionsByRow] = useState<
+    Record<number, PenawaranPermintaanHargaOption[]>
+  >({});
+  const [permintaanLoadingByRow, setPermintaanLoadingByRow] = useState<
+    Record<number, boolean>
+  >({});
+  const [permintaanErrorByRow, setPermintaanErrorByRow] = useState<
+    Record<number, string>
+  >({});
+  const [permintaanPopupRowIndex, setPermintaanPopupRowIndex] = useState<
+    number | null
+  >(null);
+  const [showClearDetailConfirmModal, setShowClearDetailConfirmModal] =
+    useState(false);
 
   const draftFromRoute: PenawaranDraftPayload | undefined =
     route?.params?.draft;
@@ -256,11 +281,15 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
   );
   const [note, setNote] = useState(String(draftFromRoute?.note || ''));
 
+  const [isCustomerLockedByPermintaan, setIsCustomerLockedByPermintaan] =
+    useState(false);
+
   const [details, setDetails] = useState<DraftDetail[]>(
     draftFromRoute?.details?.length
       ? draftFromRoute.details.map((d: any) => ({
           ...buildEmptyDetail(),
           ...d,
+          __rowId: String(d?.__rowId || createRowId()),
           no_permintaan: toUpper(
             String(d?.no_permintaan || d?.pcs || '').trim(),
           ),
@@ -356,18 +385,250 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
     );
   }, [details]);
 
-  const selectedDivisiLabel = useMemo(() => {
-    const kode = String(divisi || '').trim();
-    const found = DIVISI_OPTIONS.find(opt => opt.kode === kode);
-    if (found) return found.label;
-    return kode ? `${kode} - LAINNYA` : '-';
-  }, [divisi]);
+  const selectedPermintaanNomorSet = useMemo(() => {
+    const picked = new Set<string>();
+    details.forEach(d => {
+      const nomor = toUpper(String(d?.no_permintaan || '').trim());
+      if (nomor) picked.add(nomor);
+    });
+    return picked;
+  }, [details]);
+
+  const isAllowedDivisiKode = (value: string) =>
+    DIVISI_OPTIONS.some(opt => opt.kode === String(value || '').trim());
+
+  const divisiDisplayLabel =
+    DIVISI_OPTIONS.find(opt => opt.kode === String(divisi || '').trim())
+      ?.label || divisi;
 
   const updateDetail = (index: number, patch: Partial<DraftDetail>) => {
     setDetails(prev =>
       prev.map((it, i) => (i === index ? { ...it, ...patch } : it)),
     );
   };
+
+  const handleBlockedCustomerChange = () => {
+    Toast.show({
+      type: 'glassError',
+      text1: 'Customer terkunci',
+      text2: 'Untuk ganti customer, reset detail terlebih dahulu.',
+    });
+  };
+
+  const resetDetailAndUnlockCustomer = () => {
+    setDetails(prev =>
+      prev.map(it => ({
+        ...buildEmptyDetail(),
+        __rowId: it.__rowId,
+      })),
+    );
+    setPermintaanSearchByRow({});
+    setPermintaanOptionsByRow({});
+    setPermintaanLoadingByRow({});
+    setPermintaanErrorByRow({});
+    setPermintaanPopupRowIndex(null);
+    setIsCustomerLockedByPermintaan(false);
+    setCustomer('');
+    setCustomerKode('');
+    Toast.show({
+      type: 'glassSuccess',
+      text1: 'Clear Berhasil',
+      text2: 'Semua detail dibersihkan dan "customer" dibuka kembali.',
+    });
+  };
+
+  const confirmResetDetailAndUnlockCustomer = () => {
+    setShowClearDetailConfirmModal(true);
+  };
+
+  const getEffectiveSalesKodeForPermintaan = () => {
+    if (isManager) {
+      return toUpper(String(salesKode || '').trim());
+    }
+    return toUpper(String(loginSalesKode || '').trim());
+  };
+
+  const formatPermintaanUkuranRingkas = (
+    ukuran?: string,
+    panjang?: number,
+    lebar?: number,
+  ) => {
+    const ukuranText = String(ukuran || '').trim();
+    if (ukuranText) return ukuranText;
+
+    const hasPanjang =
+      panjang !== undefined &&
+      panjang !== null &&
+      Number.isFinite(Number(panjang));
+    const hasLebar =
+      lebar !== undefined && lebar !== null && Number.isFinite(Number(lebar));
+
+    if (hasPanjang || hasLebar) {
+      return `${hasPanjang ? Number(panjang) : 0} x ${
+        hasLebar ? Number(lebar) : 0
+      }`;
+    }
+
+    return '-';
+  };
+
+  const openPermintaanPopup = async (index: number) => {
+    setPermintaanPopupRowIndex(index);
+    const keyword =
+      permintaanSearchByRow[index] ?? details[index]?.no_permintaan ?? '';
+    await fetchPermintaanOptions(index, keyword);
+  };
+
+  const closePermintaanPopup = () => {
+    setPermintaanPopupRowIndex(null);
+  };
+
+  const fetchPermintaanOptions = async (index: number, keyword?: string) => {
+    const effectiveSalesKode = getEffectiveSalesKodeForPermintaan();
+    if (!effectiveSalesKode) {
+      setPermintaanErrorByRow(prev => ({
+        ...prev,
+        [index]: 'Sales tidak valid untuk pencarian no. permintaan',
+      }));
+      return;
+    }
+
+    setPermintaanLoadingByRow(prev => ({ ...prev, [index]: true }));
+    setPermintaanErrorByRow(prev => ({ ...prev, [index]: '' }));
+    try {
+      const result = await getMasterPermintaanHargaForPenawaran(
+        {
+          search: String(keyword || '').trim(),
+          sales_kode: effectiveSalesKode,
+          customer_kode: customerKode.trim() || undefined,
+          limit: 20,
+          page: 1,
+        },
+        token,
+      );
+
+      const filteredOptions = (result.options || []).filter(opt => {
+        const nomor = toUpper(String(opt?.nomor || '').trim());
+        return nomor ? !selectedPermintaanNomorSet.has(nomor) : false;
+      });
+
+      setPermintaanOptionsByRow(prev => ({
+        ...prev,
+        [index]: filteredOptions,
+      }));
+    } catch (err: any) {
+      setPermintaanOptionsByRow(prev => ({ ...prev, [index]: [] }));
+      setPermintaanErrorByRow(prev => ({
+        ...prev,
+        [index]: err?.response?.data?.message || 'Gagal memuat no. permintaan',
+      }));
+    } finally {
+      setPermintaanLoadingByRow(prev => ({ ...prev, [index]: false }));
+    }
+  };
+
+  const handleApplyPermintaan = async (index: number, nomor: string) => {
+    const effectiveSalesKode = getEffectiveSalesKodeForPermintaan();
+    if (!effectiveSalesKode || !nomor) return;
+
+    setPermintaanLoadingByRow(prev => ({ ...prev, [index]: true }));
+    setPermintaanErrorByRow(prev => ({ ...prev, [index]: '' }));
+    try {
+      const result = await getMasterPermintaanHargaForPenawaran(
+        {
+          nomor,
+          sales_kode: effectiveSalesKode,
+          customer_kode: customerKode.trim() || undefined,
+          limit: 1,
+          page: 1,
+        },
+        token,
+      );
+
+      const selected = result.selected;
+      if (!selected?.autofill) {
+        throw new Error('Detail no. permintaan tidak ditemukan');
+      }
+
+      const af = selected.autofill;
+      updateDetail(index, {
+        no_permintaan: toUpper(String(af.no_permintaan || nomor)),
+        nama_barang: toUpper(String(af.nama_barang || '')),
+        bahan: toUpper(String(af.bahan || '')),
+        ukuran: String(af.ukuran || ''),
+        panjang:
+          af.panjang !== undefined && af.panjang !== null
+            ? String(af.panjang)
+            : '',
+        lebar:
+          af.lebar !== undefined && af.lebar !== null ? String(af.lebar) : '',
+        qty:
+          af.qty !== undefined && af.qty !== null
+            ? String(Math.max(0, Number(af.qty) || 0))
+            : '',
+        harga:
+          af.harga_referensi !== undefined && af.harga_referensi !== null
+            ? formatThousandsId(String(af.harga_referensi))
+            : '',
+      });
+
+      const pickedCustomerKode = toUpper(
+        String(selected.customer_kode || '').trim(),
+      );
+      const pickedCustomer = toUpper(String(selected.customer || '').trim());
+
+      if (pickedCustomerKode) setCustomerKode(pickedCustomerKode);
+      if (pickedCustomer) setCustomer(pickedCustomer);
+      if (pickedCustomerKode || pickedCustomer) {
+        setIsCustomerLockedByPermintaan(true);
+      }
+
+      const pickedDivisiKode = String(selected.divisi || '').trim();
+      if (pickedDivisiKode && isAllowedDivisiKode(pickedDivisiKode)) {
+        setDivisi(pickedDivisiKode);
+      }
+
+      setPermintaanOptionsByRow(prev => ({ ...prev, [index]: [] }));
+
+      const infoMessage = String((selected as any).info || '').trim();
+      const warningMessage = String(selected.warning || '').trim();
+
+      if (infoMessage && warningMessage) {
+        Toast.show({
+          type: 'glassSuccess',
+          text1: infoMessage,
+          text2: warningMessage,
+        });
+      } else if (infoMessage) {
+        Toast.show({
+          type: 'glassSuccess',
+          text1: 'Info',
+          text2: infoMessage,
+        });
+      } else if (warningMessage) {
+        Toast.show({
+          type: 'glassSuccess',
+          text1: 'Info',
+          text2: warningMessage,
+        });
+      }
+    } catch (err: any) {
+      setPermintaanErrorByRow(prev => ({
+        ...prev,
+        [index]:
+          err?.response?.data?.message ||
+          err?.message ||
+          'Gagal autofill no. permintaan',
+      }));
+    } finally {
+      setPermintaanLoadingByRow(prev => ({ ...prev, [index]: false }));
+    }
+  };
+
+  useEffect(() => {
+    setPermintaanOptionsByRow({});
+    setPermintaanErrorByRow({});
+  }, [salesKode, isManager, loginSalesKode]);
 
   const adjustQty = (index: number, delta: number) => {
     setDetails(prev =>
@@ -385,10 +646,58 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
   };
 
   const removeRow = (index: number) => {
+    const remapByRemovedIndex = <T,>(
+      prev: Record<number, T>,
+      removedIndex: number,
+    ) => {
+      const next: Record<number, T> = {};
+      Object.entries(prev).forEach(([key, value]) => {
+        const numericKey = Number(key);
+        if (!Number.isFinite(numericKey)) return;
+        if (numericKey === removedIndex) return;
+        const targetKey =
+          numericKey > removedIndex ? numericKey - 1 : numericKey;
+        next[targetKey] = value;
+      });
+      return next;
+    };
+
+    console.log('[PenawaranCreate] removeRow:before', {
+      index,
+      detailsCount: details.length,
+      detailsRowIds: details.map(d => d.__rowId),
+      searchKeys: Object.keys(permintaanSearchByRow),
+      optionKeys: Object.keys(permintaanOptionsByRow),
+      errorKeys: Object.keys(permintaanErrorByRow),
+      loadingKeys: Object.keys(permintaanLoadingByRow),
+      popupRowIndex: permintaanPopupRowIndex,
+    });
+
     setDetails(prev => {
       if (prev.length <= 1) return prev;
       return prev.filter((_, i) => i !== index);
     });
+
+    setPermintaanSearchByRow(prev => remapByRemovedIndex(prev, index));
+    setPermintaanOptionsByRow(prev => remapByRemovedIndex(prev, index));
+    setPermintaanErrorByRow(prev => remapByRemovedIndex(prev, index));
+    setPermintaanLoadingByRow(prev => remapByRemovedIndex(prev, index));
+    setPermintaanPopupRowIndex(prev => {
+      if (prev === null) return prev;
+      if (prev === index) return null;
+      return prev > index ? prev - 1 : prev;
+    });
+
+    setTimeout(() => {
+      console.log('[PenawaranCreate] removeRow:after', {
+        index,
+        detailsCount: details.length - 1,
+        searchKeys: Object.keys(permintaanSearchByRow),
+        optionKeys: Object.keys(permintaanOptionsByRow),
+        errorKeys: Object.keys(permintaanErrorByRow),
+        loadingKeys: Object.keys(permintaanLoadingByRow),
+      });
+    }, 0);
   };
 
   const buildDraft = (): PenawaranDraftPayload => ({
@@ -419,6 +728,13 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
       selectedExistingNomor,
       detailsCount: details.length,
     });
+
+    if (savingRef.current) {
+      console.log('[PenawaranCreate] submit:blocked-saving-active', {
+        submitTraceId,
+      });
+      return;
+    }
 
     if (selectedExistingNomor) {
       Toast.show({
@@ -488,6 +804,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       const payload = {
@@ -503,6 +820,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
         keterangan: keterangan.trim(),
         note: note.trim(),
         user: user?.kode || user?.nama || 'MOBILE',
+        client_request_id: submitTraceId,
         details: filtered,
       };
 
@@ -554,6 +872,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
         responseData: err?.response?.data,
       });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -574,7 +893,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
       <View style={styles.headerArea}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.navigate('PenawaranList')}
         >
           <Text style={styles.backBtnText}>Kembali</Text>
         </TouchableOpacity>
@@ -662,6 +981,18 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                 placeholderTextColor={THEME.muted}
               />
             </View>
+            {!!nomorPenawaranSearch.trim() && (
+              <TouchableOpacity
+                onPress={() => {
+                  setNomorPenawaranSearch('');
+                  setSelectedExistingNomor('');
+                }}
+                style={styles.btnSoft}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.btnSoftText}>CLEAR</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() =>
                 runGuardedPress('penawaran-create:go-search-nomor', () =>
@@ -683,35 +1014,6 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
               Nomor terpilih: {selectedExistingNomor} (submit akan membuka data
               existing)
             </Text>
-          )}
-
-          <Text style={styles.label}>Divisi Tujuan</Text>
-          <TouchableOpacity
-            style={styles.inputButton}
-            onPress={() => setShowDivisiOptions(prev => !prev)}
-          >
-            <View style={styles.dropdownTriggerRow}>
-              <Text style={styles.inputButtonText}>{selectedDivisiLabel}</Text>
-              <Text style={styles.dropdownArrowText}>
-                {showDivisiOptions ? '▲' : '▼'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          {showDivisiOptions && (
-            <View style={styles.dropdownWrap}>
-              {DIVISI_OPTIONS.map(opt => (
-                <TouchableOpacity
-                  key={`divisi-${opt.kode}`}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setDivisi(opt.kode);
-                    setShowDivisiOptions(false);
-                  }}
-                >
-                  <Text style={styles.dropdownItemText}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
           )}
 
           <Text style={styles.label}>Tipe</Text>
@@ -816,42 +1118,64 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
             placeholderTextColor={THEME.muted}
           />
 
+          <Text style={styles.label}>Divisi Tujuan</Text>
+          {!isCustomerLockedByPermintaan ? (
+            <Text style={styles.helperInfoText}>
+              "Divisi Tujuan" terisi otomatis dari No. Permintaan yang dipilih.
+            </Text>
+          ) : (
+            <Text style={styles.helperLockedText}>
+              "Divisi Tujuan" terkunci berdasarkan No. Permintaan
+            </Text>
+          )}
+          <View style={styles.row}>
+            <View style={[styles.inputWrap, { flex: 1, marginBottom: 0 }]}>
+              <TextInput
+                value={divisiDisplayLabel}
+                onChangeText={t => {
+                  if (isCustomerLockedByPermintaan) {
+                    handleBlockedCustomerChange();
+                    return;
+                  }
+                  setDivisi(toUpper(t));
+                }}
+                placeholder="..."
+                placeholderTextColor={THEME.muted}
+                style={styles.input}
+                editable={false}
+              />
+            </View>
+          </View>
+
           <Text style={styles.label}>Customer</Text>
+          {!isCustomerLockedByPermintaan ? (
+            <Text style={styles.helperInfoText}>
+              "Customer" terisi otomatis dari No. Permintaan yang dipilih.
+            </Text>
+          ) : (
+            <Text style={styles.helperLockedText}>
+              "Customer" terkunci berdasarkan No. Permintaan
+            </Text>
+          )}
           <View style={styles.row}>
             <View style={[styles.inputWrap, { flex: 1, marginBottom: 0 }]}>
               <TextInput
                 value={customer}
                 onChangeText={t => {
+                  if (isCustomerLockedByPermintaan) {
+                    handleBlockedCustomerChange();
+                    return;
+                  }
                   setCustomer(toUpper(t));
                   if (customerKode) setCustomerKode('');
                 }}
-                placeholder="Pilih Customer"
+                placeholder="..."
                 placeholderTextColor={THEME.muted}
                 style={styles.input}
+                editable={false}
               />
             </View>
-
-            <TouchableOpacity
-              onPress={() =>
-                runGuardedPress('penawaran-create:go-search-customer', () =>
-                  navigation.navigate('CariCustomer', {
-                    keyword: customer,
-                    from: 'PENAWARAN_CREATE',
-                    draft: buildDraft(),
-                  }),
-                )
-              }
-              style={styles.btnSoft}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.btnSoftText}>CARI</Text>
-            </TouchableOpacity>
           </View>
-
-          {!!customerKode && (
-            <Text style={styles.helper}>Kode: {customerKode}</Text>
-          )}
-
           <Text style={styles.label}>Keterangan</Text>
           <TextInput
             value={keterangan}
@@ -874,7 +1198,9 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Detail Item</Text>
+          <View style={styles.rowBetween}>
+            <Text style={styles.cardTitle}>Detail Item</Text>
+          </View>
           <View style={styles.addBtnWrap}>
             <TouchableOpacity style={styles.addBtn} onPress={addRow}>
               <Text style={styles.addBtnText}>+ Tambah</Text>
@@ -883,7 +1209,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
 
           <FlatList
             data={details}
-            keyExtractor={(_, idx) => `draft-${idx}`}
+            keyExtractor={item => item.__rowId}
             scrollEnabled={false}
             ItemSeparatorComponent={DetailSeparator}
             renderItem={({ item, index }) => (
@@ -891,22 +1217,86 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                 <View style={styles.rowBetween}>
                   <Text style={styles.detailTitle}>Baris {index + 1}</Text>
                   {details.length > 1 && (
-                    <TouchableOpacity onPress={() => removeRow(index)}>
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => removeRow(index)}
+                    >
                       <Text style={styles.removeText}>Hapus</Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
                 <Text style={styles.detailFieldLabel}>No. Permintaan</Text>
-                <TextInput
-                  value={item.no_permintaan}
-                  onChangeText={t =>
-                    updateDetail(index, { no_permintaan: toUpper(t) })
-                  }
-                  style={styles.input}
-                  placeholder="No. Permintaan item..."
-                  placeholderTextColor={THEME.muted}
-                />
+                <View style={styles.row}>
+                  {(() => {
+                    const nomorPermintaanValue =
+                      permintaanSearchByRow[index] ?? item.no_permintaan;
+                    const hasNomorPermintaan = !!String(
+                      nomorPermintaanValue || '',
+                    ).trim();
+
+                    return (
+                      <>
+                        <View
+                          style={[
+                            styles.inputWrap,
+                            styles.noPermintaanInputWrap,
+                            { flex: 1, marginBottom: 0 },
+                          ]}
+                        >
+                          <TextInput
+                            value={nomorPermintaanValue}
+                            onChangeText={t => {
+                              const upperValue = toUpper(t);
+                              setPermintaanSearchByRow(prev => ({
+                                ...prev,
+                                [index]: upperValue,
+                              }));
+                              updateDetail(index, {
+                                no_permintaan: upperValue,
+                              });
+                            }}
+                            style={styles.input}
+                            placeholder="Cari/pilih No. Permintaan"
+                            placeholderTextColor={THEME.muted}
+                          />
+                          {hasNomorPermintaan && (
+                            <TouchableOpacity
+                              style={styles.noPermintaanClearButton}
+                              onPress={confirmResetDetailAndUnlockCustomer}
+                              activeOpacity={0.85}
+                            >
+                              <Text style={styles.noPermintaanClearButtonText}>
+                                <MaterialIcons
+                                  name="close"
+                                  style={{ color: THEME.ink }}
+                                />
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        {!hasNomorPermintaan && (
+                          <TouchableOpacity
+                            onPress={() => openPermintaanPopup(index)}
+                            style={styles.btnSoft}
+                            activeOpacity={0.9}
+                            disabled={Boolean(permintaanLoadingByRow[index])}
+                          >
+                            <Text style={styles.btnSoftText}>
+                              {permintaanLoadingByRow[index] ? '...' : 'CARI'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    );
+                  })()}
+                </View>
+
+                {!!permintaanErrorByRow[index] && (
+                  <Text style={styles.removeText}>
+                    {permintaanErrorByRow[index]}
+                  </Text>
+                )}
 
                 <Text style={styles.detailFieldLabel}>Nama Barang</Text>
                 <TextInput
@@ -949,7 +1339,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                           })
                         }
                         style={[styles.input, styles.unitInput]}
-                        placeholder="0"
+                        placeholder="0.00"
                         keyboardType="decimal-pad"
                         placeholderTextColor={THEME.muted}
                       />
@@ -968,7 +1358,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                           })
                         }
                         style={[styles.input, styles.unitInput]}
-                        placeholder="0"
+                        placeholder="0.00"
                         keyboardType="decimal-pad"
                         placeholderTextColor={THEME.muted}
                       />
@@ -1034,7 +1424,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                 </View>
 
                 <Text style={styles.lineTotalText}>
-                  Total: Rp.{' '}
+                  Estimasi: Rp.{' '}
                   {new Intl.NumberFormat('id-ID').format(
                     parseNum(item.qty) * parseNum(item.harga),
                   )}
@@ -1044,32 +1434,253 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
           />
 
           <Text style={styles.totalText}>
-            Estimasi nominal:{' '}
+            Total Estimasi:{' '}
             {new Intl.NumberFormat('id-ID').format(totalNominal)}
           </Text>
+
+          <TouchableOpacity
+            style={[styles.saveBtn, styles.saveBtnInCard]}
+            onPress={() =>
+              runGuardedPress('penawaran-create:submit', submit, 1000)
+            }
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Text style={styles.saveBtnText}>Ajukan Penawaran</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
-      <View
-        style={[
-          styles.footer,
-          {
-            paddingBottom: Math.max(insets.bottom, 12),
-          },
-        ]}
+      <Modal
+        visible={permintaanPopupRowIndex !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={closePermintaanPopup}
       >
-        <TouchableOpacity
-          style={styles.saveBtn}
-          onPress={submit}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
-            <Text style={styles.saveBtnText}>Ajukan Penawaran</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+        <View style={styles.popupBackdrop}>
+          <View style={styles.popupCard}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.cardTitle}>Pilih No. Permintaan</Text>
+              <TouchableOpacity onPress={closePermintaanPopup}>
+                <Text style={styles.removeText}>
+                  <MaterialIcons
+                    name="dangerous"
+                    size={20}
+                    color={THEME.danger}
+                  />
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.nomorSearchWrap}>
+              <TextInput
+                value={
+                  permintaanPopupRowIndex !== null
+                    ? permintaanSearchByRow[permintaanPopupRowIndex] ?? ''
+                    : ''
+                }
+                onChangeText={t => {
+                  if (permintaanPopupRowIndex === null) return;
+                  setPermintaanSearchByRow(prev => ({
+                    ...prev,
+                    [permintaanPopupRowIndex]: toUpper(t),
+                  }));
+                }}
+                style={styles.nomorSearchInput}
+                placeholder="Cari no permintaan / pekerjaan / customer / kain"
+                placeholderTextColor={THEME.muted}
+              />
+              {permintaanPopupRowIndex !== null &&
+                !!(
+                  permintaanSearchByRow[permintaanPopupRowIndex] ?? ''
+                ).trim() && (
+                  <TouchableOpacity
+                    style={styles.nomorClearButton}
+                    onPress={() => {
+                      if (permintaanPopupRowIndex === null) return;
+                      setPermintaanSearchByRow(prev => ({
+                        ...prev,
+                        [permintaanPopupRowIndex]: '',
+                      }));
+                      setPermintaanOptionsByRow(prev => ({
+                        ...prev,
+                        [permintaanPopupRowIndex]: [],
+                      }));
+                      setPermintaanErrorByRow(prev => ({
+                        ...prev,
+                        [permintaanPopupRowIndex]: '',
+                      }));
+                    }}
+                    disabled={permintaanPopupRowIndex === null}
+                  >
+                    <Text style={styles.nomorClearButtonText}>✕</Text>
+                  </TouchableOpacity>
+                )}
+            </View>
+
+            <View style={[styles.row, { marginTop: 8 }]}>
+              <TouchableOpacity
+                style={[styles.btnSoft, { flex: 1 }]}
+                onPress={() => {
+                  if (permintaanPopupRowIndex === null) return;
+                  fetchPermintaanOptions(
+                    permintaanPopupRowIndex,
+                    permintaanSearchByRow[permintaanPopupRowIndex] ?? '',
+                  );
+                }}
+                disabled={
+                  permintaanPopupRowIndex === null ||
+                  Boolean(
+                    permintaanPopupRowIndex !== null &&
+                      permintaanLoadingByRow[permintaanPopupRowIndex],
+                  )
+                }
+              >
+                <Text style={styles.btnSoftText}>Cari</Text>
+              </TouchableOpacity>
+            </View>
+
+            {permintaanPopupRowIndex !== null &&
+              permintaanLoadingByRow[permintaanPopupRowIndex] && (
+                <View style={styles.popupStateWrap}>
+                  <ActivityIndicator color={THEME.primary} />
+                  <Text style={styles.searchResultMeta}>
+                    Memuat data no. permintaan...
+                  </Text>
+                </View>
+              )}
+
+            {permintaanPopupRowIndex !== null &&
+              !permintaanLoadingByRow[permintaanPopupRowIndex] &&
+              !(permintaanOptionsByRow[permintaanPopupRowIndex] || [])
+                .length && (
+                <View style={styles.popupStateWrap}>
+                  <Text style={styles.searchResultMeta}>
+                    Data tidak ditemukan
+                  </Text>
+                </View>
+              )}
+
+            {permintaanPopupRowIndex !== null &&
+              !!(permintaanOptionsByRow[permintaanPopupRowIndex] || [])
+                .length && (
+                <ScrollView
+                  style={styles.popupListWrap}
+                  contentContainerStyle={{ paddingBottom: 2 }}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {(permintaanOptionsByRow[permintaanPopupRowIndex] || []).map(
+                    opt => {
+                      const ukuranRingkas = formatPermintaanUkuranRingkas(
+                        opt.ukuran,
+                        opt.panjang,
+                        opt.lebar,
+                      );
+                      const hargaLabel =
+                        opt.harga_referensi !== undefined &&
+                        opt.harga_referensi !== null &&
+                        Number(opt.harga_referensi) > 0
+                          ? `Rp ${new Intl.NumberFormat('id-ID').format(
+                              Number(opt.harga_referensi) || 0,
+                            )}`
+                          : '-';
+
+                      return (
+                        <TouchableOpacity
+                          key={`popup-permintaan-${permintaanPopupRowIndex}-${opt.nomor}`}
+                          style={styles.popupListItem}
+                          onPress={() => {
+                            if (permintaanPopupRowIndex === null) return;
+                            const rowIndex = permintaanPopupRowIndex;
+                            const picked = toUpper(String(opt.nomor || ''));
+                            if (selectedPermintaanNomorSet.has(picked)) {
+                              Toast.show({
+                                type: 'glassError',
+                                text1: 'Info',
+                                text2:
+                                  'No. Permintaan sudah dipilih di baris lain',
+                              });
+                              return;
+                            }
+                            setPermintaanSearchByRow(prev => ({
+                              ...prev,
+                              [rowIndex]: picked,
+                            }));
+                            updateDetail(rowIndex, { no_permintaan: picked });
+                            closePermintaanPopup();
+                            handleApplyPermintaan(rowIndex, picked);
+                          }}
+                        >
+                          <Text style={styles.searchResultNomor}>
+                            {opt.nomor || '-'}
+                          </Text>
+                          <Text style={styles.searchResultMeta}>
+                            Nama Pekerjaan: {opt.nama_barang || '-'}
+                          </Text>
+                          <Text style={styles.searchResultMeta}>
+                            Customer: {opt.customer || '-'}
+                          </Text>
+                          <Text style={styles.searchResultMeta}>
+                            Kain: {opt.bahan || '-'}
+                          </Text>
+                          <Text style={styles.searchResultMeta}>
+                            Ukuran / P x L: {ukuranRingkas}
+                          </Text>
+                          <Text style={styles.searchResultMeta}>
+                            Qty / Jml Order: {opt.qty || 0}
+                          </Text>
+                          <Text style={styles.searchResultMeta}>
+                            Harga Referensi: {hargaLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    },
+                  )}
+                </ScrollView>
+              )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showClearDetailConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowClearDetailConfirmModal(false)}
+      >
+        <View style={styles.clearConfirmOverlay}>
+          <View style={styles.clearConfirmCard}>
+            <View style={styles.clearConfirmIndicator} />
+            <Text style={styles.clearConfirmTitle}>Konfirmasi</Text>
+            <Text style={styles.clearConfirmSubtitle}>
+              Semua detail akan dibersihkan dan "customer" akan dibuka kembali.
+            </Text>
+
+            <View style={styles.clearConfirmActionRow}>
+              <TouchableOpacity
+                style={styles.clearConfirmBtnCancel}
+                onPress={() => setShowClearDetailConfirmModal(false)}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.clearConfirmTextCancel}>Batal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.clearConfirmBtnSubmit}
+                onPress={() => {
+                  setShowClearDetailConfirmModal(false);
+                  resetDetailAndUnlockCustomer();
+                }}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.clearConfirmTextSubmit}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {showDatePicker && (
         <DateTimePicker
@@ -1126,7 +1737,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 170,
+    paddingBottom: 34,
     gap: 12,
   },
   card: {
@@ -1144,7 +1755,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   label: {
-    color: THEME.muted,
+    color: THEME.ink,
     fontSize: 12,
     fontWeight: '800',
     marginTop: 8,
@@ -1164,6 +1775,27 @@ const styles = StyleSheet.create({
   },
   inputWrap: {
     marginBottom: 10,
+  },
+  noPermintaanInputWrap: {
+    position: 'relative',
+  },
+  noPermintaanClearButton: {
+    position: 'absolute',
+    right: 10,
+    top: '50%',
+    marginTop: -11,
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: 'rgba(100,116,139,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noPermintaanClearButtonText: {
+    color: THEME.ink,
+    fontWeight: '900',
+    fontSize: 11,
+    lineHeight: 12,
   },
   inputButton: {
     borderWidth: 1,
@@ -1257,6 +1889,48 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 2,
     fontWeight: '500',
+  },
+  helperInfoText: {
+    color: THEME.accent,
+    fontSize: 11,
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  helperLockedText: {
+    color: THEME.danger,
+    fontSize: 11,
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  resetDetailWrap: {
+    marginTop: 8,
+    alignItems: 'flex-start',
+  },
+  resetDetailBtn: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.danger,
+    backgroundColor: '#FFF5F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetDetailBtnDisabled: {
+    opacity: 0.55,
+  },
+  resetDetailBtnText: {
+    color: THEME.danger,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    fontSize: 12,
+  },
+  resetDetailInfoText: {
+    color: THEME.muted,
+    fontSize: 11,
+    marginTop: -4,
+    marginBottom: 8,
+    fontWeight: '600',
   },
   searchResultWrap: {
     marginTop: 8,
@@ -1371,6 +2045,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: -2,
   },
+  removeBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 500,
+    backgroundColor: THEME.soft,
+    borderWidth: 1,
+    borderColor: THEME.danger,
+  },
   removeText: {
     color: THEME.danger,
     fontWeight: '700',
@@ -1433,17 +2115,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 13,
   },
-  footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderTopWidth: 1,
-    borderTopColor: THEME.line,
-  },
   saveBtn: {
     height: 46,
     borderRadius: 14,
@@ -1454,9 +2125,112 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
   },
+  saveBtnInCard: {
+    marginTop: 14,
+  },
   saveBtnText: {
     color: '#FFF',
     fontWeight: '900',
     fontSize: 14,
+  },
+  popupBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+  },
+  popupCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    padding: 14,
+    maxHeight: '76%',
+    ...PENAWARAN_SHADOW.softCard,
+  },
+  popupStateWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    gap: 8,
+  },
+  popupListWrap: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    borderRadius: 12,
+    backgroundColor: THEME.soft,
+  },
+  popupListItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.line,
+  },
+  clearConfirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  clearConfirmCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.16)',
+    ...PENAWARAN_SHADOW.softCard,
+  },
+  clearConfirmIndicator: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(79,70,229,0.24)',
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  clearConfirmTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: THEME.ink,
+    textAlign: 'center',
+  },
+  clearConfirmSubtitle: {
+    marginTop: 8,
+    textAlign: 'center',
+    color: THEME.muted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  clearConfirmActionRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  clearConfirmBtnCancel: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.danger,
+    backgroundColor: THEME.danger,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  clearConfirmBtnSubmit: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: THEME.primary,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  clearConfirmTextCancel: {
+    color: '#fff',
+    fontWeight: '800',
+  },
+  clearConfirmTextSubmit: {
+    color: '#fff',
+    fontWeight: '900',
   },
 });

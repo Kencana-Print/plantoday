@@ -20,6 +20,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../../services/api';
 import { useAuth } from '../../context/authContext';
 import { checkAppUpdateWithStatus } from '../../services/appUpdate';
+import {
+  clearRememberedUsername,
+  getRememberedUsername,
+  getRememberMe,
+  setRememberedUsername,
+  setRememberMe as persistRememberMe,
+} from '../../services/rememberMeStorage';
 
 const THEME = {
   primary: '#4F46E5',
@@ -47,7 +54,6 @@ export default function LoginScreen({ navigation }: any) {
   const [latestVersionLabel, setLatestVersionLabel] = useState<string | null>(
     null,
   );
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [rememberMe, setRememberMe] = useState(false);
 
   const { setUser, setToken } = useAuth();
@@ -59,10 +65,28 @@ export default function LoginScreen({ navigation }: any) {
   useEffect(() => {
     const checkDevice = async () => {
       try {
+        const rememberFlag = await getRememberMe();
+        setRememberMe(rememberFlag);
+
+        // Remember Me hanya aktif saat checkbox true.
+        // Jika false, jangan lakukan autofill username sama sekali.
+        if (!rememberFlag) {
+          setUsername('');
+          return;
+        }
+
+        const rememberedUsername = await getRememberedUsername();
+        if (rememberedUsername) {
+          setUsername(rememberedUsername);
+          return;
+        }
+
         const deviceId = await DeviceInfo.getAndroidId();
         const res = await api.post('/check-device', { deviceId });
         if (res.data?.success && res.data?.username) {
-          setUsername(String(res.data.username));
+          const resolvedUsername = String(res.data.username).trim();
+          setUsername(resolvedUsername);
+          await setRememberedUsername(resolvedUsername);
         }
       } catch {}
     };
@@ -146,6 +170,15 @@ export default function LoginScreen({ navigation }: any) {
         });
         return;
       }
+
+      const normalizedUsername = username.trim();
+      await persistRememberMe(rememberMe);
+      if (rememberMe) {
+        await setRememberedUsername(normalizedUsername);
+      } else {
+        await clearRememberedUsername();
+      }
+
       setToken(res.data.token);
       setUser(res.data.user);
     } catch (err: any) {
@@ -251,6 +284,20 @@ export default function LoginScreen({ navigation }: any) {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              style={styles.rememberWrap}
+              onPress={() => setRememberMe(v => !v)}
+              activeOpacity={0.8}
+              disabled={loading}
+            >
+              <View
+                style={[styles.checkbox, rememberMe && styles.checkboxActive]}
+              >
+                {rememberMe ? <Text style={styles.checkboxTick}>✓</Text> : null}
+              </View>
+              <Text style={styles.rememberText}>Remember Me</Text>
+            </TouchableOpacity>
 
             {/* Login Button */}
             <TouchableOpacity
@@ -395,6 +442,43 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 12,
     letterSpacing: 0.4,
+  },
+
+  rememberWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    marginTop: -2,
+  },
+
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+
+  checkboxActive: {
+    backgroundColor: THEME.primary,
+    borderColor: THEME.primary,
+  },
+
+  checkboxTick: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
+    lineHeight: 14,
+  },
+
+  rememberText: {
+    color: THEME.muted,
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   /* Primary button */

@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
 
   header: { alignItems: 'center' },
   title: {
-    fontSize: 20,
+    fontSize: 25,
     fontWeight: '900',
     color: THEME.ink,
     letterSpacing: 0.2,
@@ -387,6 +387,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 6,
     fontWeight: '700',
+    textAlign: 'center',
   },
 
   card: {

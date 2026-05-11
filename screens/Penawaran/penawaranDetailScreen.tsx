@@ -26,6 +26,7 @@ import {
   PenawaranDetailItem,
   PenawaranHeader,
 } from '../../services/penawaranApi';
+import { useAuth } from '../../context/authContext';
 import PenawaranApprovalModal from './penawaranApprovalModal';
 import {
   PENAWARAN_SHADOW,
@@ -269,6 +270,7 @@ const InfoRow = ({
 
 export default function PenawaranDetailScreen({ navigation, route }: any) {
   const nomor = String(route?.params?.nomor || '');
+  const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const pdfHeaderAssetConfig = useMemo(
     () => ({
@@ -338,12 +340,21 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
 
     setLoading(true);
     try {
+      if (!token) {
+        throw new Error('Token auth tidak tersedia');
+      }
+
+      console.log('[PenawaranDetail] loadDetail request', {
+        nomor,
+        hasToken: Boolean(token),
+      });
+
       const fetchDetailWithRetry = async () => {
         let lastError: any;
 
         for (let attempt = 0; attempt < 4; attempt += 1) {
           try {
-            return await getPenawaranDetail(nomor);
+            return await getPenawaranDetail(nomor, token);
           } catch (error: any) {
             lastError = error;
             const status = error?.response?.status;
@@ -368,7 +379,7 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
 
       const [detailResult, logsResult] = await Promise.allSettled([
         fetchDetailWithRetry(),
-        getPenawaranActivityLogs(nomor),
+        getPenawaranActivityLogs(nomor, token),
       ]);
 
       if (detailResult.status === 'rejected') {
@@ -399,7 +410,7 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
-  }, [navigation, nomor]);
+  }, [navigation, nomor, token]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1815,7 +1826,7 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
                 <Text style={styles.itemName} numberOfLines={1}>
                   {index + 1}. {item.nama_barang || '-'}
                 </Text>
-                <Text style={styles.itemStatus}>{item.status || 'OPEN'}</Text>
+                <Text style={styles.itemStatus}>{item.status || '-'}</Text>
               </View>
 
               <Text style={styles.itemMeta}>

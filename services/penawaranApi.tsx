@@ -97,6 +97,48 @@ export type PenawaranMasterNomorOption = {
   perusahaan?: string;
 };
 
+export type PenawaranPermintaanHargaOption = {
+  nomor: string;
+  tanggal?: string;
+  status?: string;
+  divisi?: string;
+  sales_kode?: string;
+  sales?: string;
+  customer_kode?: string;
+  customer?: string;
+  nama_barang?: string;
+  bahan?: string;
+  ukuran?: string;
+  panjang?: number;
+  lebar?: number;
+  qty?: number;
+  harga_referensi?: number;
+  is_non_belum?: number;
+};
+
+export type PenawaranPermintaanHargaSelected = {
+  nomor: string;
+  tanggal?: string;
+  status?: string;
+  divisi?: string;
+  sales_kode?: string;
+  sales?: string;
+  customer_kode?: string;
+  customer?: string;
+  autofill: {
+    no_permintaan: string;
+    nama_barang?: string;
+    bahan?: string;
+    ukuran?: string;
+    panjang?: number;
+    lebar?: number;
+    qty?: number;
+    harga_referensi?: number;
+    keterangan?: string;
+  };
+  warning?: string;
+};
+
 export type PenawaranCreatePayload = {
   tanggal: string;
   divisi: string;
@@ -161,13 +203,24 @@ export type PenawaranActivityLog = {
   }>;
 };
 
-export const getPenawaranList = async (params: PenawaranListParams = {}) => {
-  const response = await api.get('/penawaran', { params });
+export const getPenawaranList = async (
+  params: PenawaranListParams = {},
+  token?: string | null,
+) => {
+  const response = await api.get('/penawaran', {
+    params,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   return (response.data?.data || []) as PenawaranListItem[];
 };
 
-export const getPenawaranDetail = async (nomor: string) => {
-  const response = await api.get(`/penawaran/${encodeURIComponent(nomor)}`);
+export const getPenawaranDetail = async (
+  nomor: string,
+  token?: string | null,
+) => {
+  const response = await api.get(`/penawaran/${encodeURIComponent(nomor)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   return response.data?.data as {
     header: PenawaranHeader;
     details: PenawaranDetailItem[];
@@ -203,6 +256,32 @@ export const getMasterPenawaranNomor = async (search?: string) => {
     params: { search: search || '' },
   });
   return (response.data?.data || []) as PenawaranMasterNomorOption[];
+};
+
+export const getMasterPermintaanHargaForPenawaran = async (
+  params: {
+    search?: string;
+    nomor?: string;
+    sales_kode?: string;
+    customer_kode?: string;
+    page?: number;
+    limit?: number;
+  } = {},
+  token?: string | null,
+) => {
+  const response = await api.get('/penawaran/master/permintaan-harga', {
+    params,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  return {
+    options: (response.data?.data?.options ||
+      []) as PenawaranPermintaanHargaOption[],
+    selected:
+      (response.data?.data?.selected as PenawaranPermintaanHargaSelected) ||
+      null,
+    meta: response.data?.meta || {},
+  };
 };
 
 export const updatePenawaranStatusDetail = async (
@@ -249,9 +328,15 @@ export const requestApprovalPerubahan = async (
   };
 };
 
-export const getPenawaranActivityLogs = async (nomor: string) => {
+export const getPenawaranActivityLogs = async (
+  nomor: string,
+  token?: string | null,
+) => {
   const response = await api.get(
     `/penawaran/${encodeURIComponent(nomor)}/activity-logs`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
   );
   return (response.data?.data || []) as PenawaranActivityLog[];
 };

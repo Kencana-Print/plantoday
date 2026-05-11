@@ -47,10 +47,22 @@ const menus: MenuItem[] = [
     icon: '🏅',
   },
   {
+    title: 'Permintaan Harga',
+    route: 'PermintaanHargaList',
+    roles: ['SALES', 'MANAGER'],
+    icon: '💰',
+  },
+  {
     title: 'Penawaran',
     route: 'PenawaranList',
     roles: ['SALES', 'MANAGER'],
     icon: '🧾',
+  },
+  {
+    title: 'Tracking Penawaran',
+    route: 'TrackingPenawaran',
+    roles: ['SALES', 'MANAGER'],
+    icon: '📌',
   },
   {
     title: 'Pengiriman Kurir',

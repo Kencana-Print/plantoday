@@ -33,6 +33,11 @@ import PenawaranStatusScreen from '../screens/Penawaran/penawaranStatusScreen';
 import CariPerusahaanScreen from '../screens/Penawaran/cariPerusahaanScreen';
 import CariSalesScreen from '../screens/Penawaran/cariSalesScreen';
 import CariNomorPenawaranScreen from '../screens/Penawaran/cariNomorPenawaranScreen';
+import TrackingPenawaranScreen from '../screens/Penawaran/trackingPenawaranScreen';
+import PermintaanHargaListScreen from '../screens/PermintaanHarga/permintaanHargaListScreen';
+import PermintaanHargaDetailScreen from '../screens/PermintaanHarga/permintaanHargaDetailScreen';
+import PermintaanHargaFormScreen from '../screens/PermintaanHarga/permintaanHargaFormScreen';
+import TambahCustomerScreen from '../screens/PermintaanHarga/tambahCustomerScreen';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -74,6 +79,19 @@ export type RootStackParamList = {
   CariPerusahaanPenawaran: { from: string };
   CariSalesPenawaran: { from: string };
   CariNomorPenawaran: { from: string };
+  TrackingPenawaran: undefined;
+  PermintaanHargaList: undefined;
+  PermintaanHargaDetail: { nomor: string };
+  PermintaanHargaForm: {
+    mode: 'create' | 'edit';
+    nomor?: string;
+    initialData?: any;
+    selectedCustomer?: {
+      kode: string;
+      nama: string;
+    };
+  };
+  TambahCustomerPermintaanHarga: undefined;
   Login: undefined;
   Register: undefined;
 };
@@ -187,6 +205,26 @@ export default function AppNavigator() {
                 <Stack.Screen
                   name="CariNomorPenawaran"
                   component={CariNomorPenawaranScreen}
+                />
+                <Stack.Screen
+                  name="TrackingPenawaran"
+                  component={TrackingPenawaranScreen}
+                />
+                <Stack.Screen
+                  name="PermintaanHargaList"
+                  component={PermintaanHargaListScreen}
+                />
+                <Stack.Screen
+                  name="PermintaanHargaDetail"
+                  component={PermintaanHargaDetailScreen}
+                />
+                <Stack.Screen
+                  name="PermintaanHargaForm"
+                  component={PermintaanHargaFormScreen}
+                />
+                <Stack.Screen
+                  name="TambahCustomerPermintaanHarga"
+                  component={TambahCustomerScreen}
                 />
               </>
             )}

@@ -413,11 +413,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   listContent: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 54 : 18,
+    paddingTop: 4,
     paddingBottom: 120,
   },
   headerWrap: {
     backgroundColor: THEME.bgBottom,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     paddingBottom: 10,
   },
   header: { alignItems: 'center', marginBottom: 10 },

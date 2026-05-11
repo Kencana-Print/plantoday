@@ -1,10 +1,16 @@
 import axios from 'axios';
 
+export const PUBLIC_API_ORIGIN = 'http://103.94.238.252:3005'; //server produksi
+// export const PUBLIC_API_ORIGIN = 'http://10.0.2.2:3001'; // lokal android emulator
+export const PUBLIC_IMAGE_READ_ORIGIN = 'http://103.94.238.252:8182';
+export const PUBLIC_IMAGE_UPLOAD_ORIGIN = 'http://103.94.238.252:8080';
+export const PUBLIC_IMAGE_BASE_PATH = '/images/mintaharga';
+const RELEASE_API_BASE_URL = `${PUBLIC_API_ORIGIN}/api`;
+const DEV_API_BASE_URL = `${PUBLIC_API_ORIGIN}/api`;
+const ACTIVE_API_BASE_URL = __DEV__ ? DEV_API_BASE_URL : RELEASE_API_BASE_URL;
+
 const API = axios.create({
-  // baseURL: 'http://10.0.2.2:3001/api', // EMULATOR LOKAL
-  // baseURL: 'http://localhost:3001/api', // LOKAL
-  // baseURL: 'http://192.168.1.87:3001/api', // SERVER EDP
-  baseURL: 'http://103.94.238.252:3005/api', // SERVER VPS
+  baseURL: ACTIVE_API_BASE_URL,
   timeout: 30000,
 });
 

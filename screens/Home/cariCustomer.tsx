@@ -75,7 +75,7 @@ export default function CariCustomerScreen({ navigation, route }: any) {
     setLoading(true);
     try {
       const endpoint =
-        from === 'PENAWARAN_CREATE'
+        from === 'PENAWARAN_CREATE' || from === 'PERMINTAAN_HARGA_FORM'
           ? '/penawaran/master/customer'
           : '/cari-customer';
       const res = await api.get(endpoint, { params: { search: q } });
@@ -138,6 +138,14 @@ export default function CariCustomerScreen({ navigation, route }: any) {
         navigation.navigate({
           name: 'PenawaranCreate',
           params: { draft, selectedCustomer: payload },
+          merge: true,
+        });
+        return;
+      }
+      if (from === 'PERMINTAAN_HARGA_FORM') {
+        navigation.navigate({
+          name: 'PermintaanHargaForm',
+          params: { selectedCustomer: payload },
           merge: true,
         });
         return;
@@ -295,12 +303,13 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 54 : 18,
+    paddingTop: 4,
     paddingBottom: 110, // ruang bottom bar
   },
 
   headerWrap: {
     backgroundColor: THEME.bgBottom,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     paddingBottom: 10,
   },
 

@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   StatusBar,
-  Platform,
   TouchableOpacity,
   ActivityIndicator,
   Modal,
@@ -730,7 +729,7 @@ export default function AchievementOmsetScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   listContent: {
-    paddingTop: Platform.OS === 'android' ? 54 : 18,
+    paddingTop: 4,
     paddingHorizontal: 20,
     paddingBottom: 60,
   },
@@ -743,11 +742,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subTitle: {
+    marginTop: 6,
     color: THEME.muted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     textAlign: 'center',
-    marginTop: 2,
   },
 
   card: {

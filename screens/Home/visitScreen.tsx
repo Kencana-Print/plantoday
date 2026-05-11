@@ -499,79 +499,85 @@ export default function VisitGabunganScreen({ navigation }: any) {
 
   const ListHeader = (
     <View style={styles.headerWrap}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Visit</Text>
-        <Text style={styles.subtitle}>Rekap Kunjungan</Text>
+      <View style={styles.headerTop}>
+        <View style={styles.headerTopRow}>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.title}>Visit</Text>
+            <Text style={styles.subtitle}>Rekap Kunjungan</Text>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.row2}>
-        <View style={styles.col}>
-          <GlassSelect
-            label="Cabang"
-            value={selectedCabang}
-            options={cabangOptions}
-            visible={openCabang}
-            onOpen={() => {
-              if (!isManager) return;
-              setOpenCabang(true);
-            }}
-            onClose={() => setOpenCabang(false)}
-            onSelect={setSelectedCabang}
-          />
-        </View>
-
-        <View style={styles.col}>
-          {isManager ? (
+      <View style={styles.headerCard}>
+        <View style={styles.row2}>
+          <View style={styles.col}>
             <GlassSelect
-              label={loadingSales ? 'Sales (memuat...)' : 'Sales'}
-              value={selectedSales || (loadingSales ? 'Loading...' : '')}
-              options={salesOptions}
-              visible={openSales}
+              label="Cabang"
+              value={selectedCabang}
+              options={cabangOptions}
+              visible={openCabang}
               onOpen={() => {
-                if (loadingSales) return;
-                setOpenSales(true);
+                if (!isManager) return;
+                setOpenCabang(true);
               }}
-              onClose={() => setOpenSales(false)}
-              onSelect={setSelectedSales}
+              onClose={() => setOpenCabang(false)}
+              onSelect={setSelectedCabang}
             />
-          ) : (
-            <>
-              <Text style={styles.label}>Sales</Text>
-              <View style={styles.readonlyRow}>
-                <Text style={styles.readonlyText}>{namaUser || '-'}</Text>
-              </View>
-            </>
-          )}
-        </View>
-      </View>
+          </View>
 
-      <View style={styles.row2}>
-        <View style={styles.col}>
-          <Text style={styles.label}>Tanggal Awal</Text>
-          <TouchableOpacity
-            style={styles.dateSelect}
-            onPress={() => setShowAwal(true)}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.dateText}>
-              {formatDisplayDate(tanggalAwal)}
-            </Text>
-            <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
-          </TouchableOpacity>
+          <View style={styles.col}>
+            {isManager ? (
+              <GlassSelect
+                label={loadingSales ? 'Sales (memuat...)' : 'Sales'}
+                value={selectedSales || (loadingSales ? 'Loading...' : '')}
+                options={salesOptions}
+                visible={openSales}
+                onOpen={() => {
+                  if (loadingSales) return;
+                  setOpenSales(true);
+                }}
+                onClose={() => setOpenSales(false)}
+                onSelect={setSelectedSales}
+              />
+            ) : (
+              <>
+                <Text style={styles.label}>Sales</Text>
+                <View style={styles.readonlyRow}>
+                  <Text style={styles.readonlyText}>{namaUser || '-'}</Text>
+                </View>
+              </>
+            )}
+          </View>
         </View>
 
-        <View style={styles.col}>
-          <Text style={styles.label}>Tanggal Akhir</Text>
-          <TouchableOpacity
-            style={styles.dateSelect}
-            onPress={() => setShowAkhir(true)}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.dateText}>
-              {formatDisplayDate(tanggalAkhir)}
-            </Text>
-            <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
-          </TouchableOpacity>
+        <View style={styles.row2}>
+          <View style={styles.col}>
+            <Text style={styles.label}>Tanggal Awal</Text>
+            <TouchableOpacity
+              style={styles.dateSelect}
+              onPress={() => setShowAwal(true)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.dateText}>
+                {formatDisplayDate(tanggalAwal)}
+              </Text>
+              <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.col}>
+            <Text style={styles.label}>Tanggal Akhir</Text>
+            <TouchableOpacity
+              style={styles.dateSelect}
+              onPress={() => setShowAkhir(true)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.dateText}>
+                {formatDisplayDate(tanggalAkhir)}
+              </Text>
+              <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -937,16 +943,36 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 54 : 18,
+    paddingTop: 4,
     paddingBottom: 120,
   },
 
   headerWrap: {
     backgroundColor: THEME.bgBottom,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     paddingBottom: 10,
   },
 
-  header: { alignItems: 'center', marginBottom: 10 },
+  headerTop: { marginBottom: 10 },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitleWrap: { alignItems: 'center' },
+  headerCard: {
+    backgroundColor: THEME.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+
   title: {
     fontSize: 25,
     fontWeight: '900',
@@ -967,10 +993,10 @@ const styles = StyleSheet.create({
   divider: { marginTop: 10, height: 1, backgroundColor: THEME.line },
 
   smallHint: {
-    marginTop: 10,
-    color: THEME.muted,
+    marginTop: 2,
+    color: THEME.ink,
     fontSize: 12,
-    textAlign: 'center',
+    textAlign: 'right',
     fontWeight: '700',
   },
 

@@ -133,7 +133,7 @@ export default function CalonCustomerScreen({ navigation }: any) {
               style={styles.backBtn}
               onPress={() =>
                 runGuardedPress('add-calon-customer:header-back', () =>
-                  navigation.navigate('Home'),
+                  navigation.navigate('RekapCalonCustomer'),
                 )
               }
             >
@@ -218,7 +218,7 @@ export default function CalonCustomerScreen({ navigation }: any) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => navigation.goBack()}
+              onPress={() => navigation.navigate('RekapCalonCustomer')}
               style={styles.secondaryBtn}
             >
               <Text style={styles.secondaryBtnText}>Kembali</Text>
@@ -262,7 +262,7 @@ export default function CalonCustomerScreen({ navigation }: any) {
                 setSuccessModalVisible(false);
                 navigation.reset({
                   index: 0,
-                  routes: [{ name: 'Home' }],
+                  routes: [{ name: 'RekapCalonCustomer' }],
                 });
               }}
             >
@@ -307,16 +307,17 @@ const styles = StyleSheet.create({
 
   header: { alignItems: 'center' },
   title: {
-    fontSize: 20,
+    fontSize: 25,
     fontWeight: '900',
     color: THEME.ink,
-    alignItems: 'center',
+    letterSpacing: 0.2,
   },
   subtitle: {
     marginTop: 6,
     color: THEME.muted,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
+    textAlign: 'center',
   },
 
   badge: {

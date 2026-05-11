@@ -128,8 +128,17 @@ export default function PenawaranStatusScreen({ route, navigation }: Props) {
 
   const loadData = async () => {
     try {
+      if (!token) {
+        throw new Error('Token auth tidak tersedia');
+      }
+
+      console.log('[PenawaranStatus] loadData request', {
+        nomor,
+        hasToken: Boolean(token),
+      });
+
       setLoading(true);
-      const detailData = await getPenawaranDetail(nomor);
+      const detailData = await getPenawaranDetail(nomor, token);
       setApprovalState(
         String(detailData?.header?.approval_state || '')
           .trim()
@@ -274,12 +283,12 @@ export default function PenawaranStatusScreen({ route, navigation }: Props) {
         >
           <Text style={styles.backBtnText}>Kembali</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Update Status Detail</Text>
+        <Text style={styles.title}>Ubah Status Item</Text>
       </View>
 
       <ScrollView style={styles.scrollView}>
         <View style={styles.headerCard}>
-          <Text style={styles.headerTitle}>Penawaran: {nomor}</Text>
+          <Text style={styles.headerTitle}>No. Penawaran: {nomor}</Text>
         </View>
 
         {approvalState === 'WAIT' && (
@@ -327,7 +336,9 @@ export default function PenawaranStatusScreen({ route, navigation }: Props) {
 
               {upd?.status === 'BATAL' && (
                 <View style={styles.formGroup}>
-                  <Text style={styles.label}>Alasan Batal *</Text>
+                  <Text style={styles.label}>
+                    Alasan Batal <Text style={styles.requiredMark}>*</Text>
+                  </Text>
                   <TouchableOpacity
                     style={[
                       styles.pickerButton,
@@ -360,7 +371,9 @@ export default function PenawaranStatusScreen({ route, navigation }: Props) {
 
               {upd?.status !== 'BATAL' && (
                 <View style={styles.formGroup}>
-                  <Text style={styles.label}>Konfirmasi</Text>
+                  <Text style={styles.label}>
+                    Konfirmasi <Text style={styles.requiredMark}>*</Text>
+                  </Text>
                   <TouchableOpacity
                     style={[
                       styles.pickerButton,
@@ -536,7 +549,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '800',
     color: THEME.ink,
   },
   headerSubtitle: {
@@ -587,6 +600,10 @@ const styles = StyleSheet.create({
     color: THEME.muted,
     marginBottom: 6,
     letterSpacing: 0.2,
+  },
+  requiredMark: {
+    color: THEME.danger,
+    fontWeight: '900',
   },
   buttonContainer: {
     flexDirection: 'row',

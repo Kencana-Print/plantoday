@@ -191,6 +191,29 @@ export default function RegisterScreen({ navigation }: any) {
                   />
                 </View>
 
+                <GlassSelect
+                  label="Jabatan"
+                  value={jabatan}
+                  options={jabatanOptions}
+                  visible={openJabatan}
+                  onOpen={() => setOpenJabatan(true)}
+                  onClose={() => setOpenJabatan(false)}
+                  onSelect={v => setJabatan(v as 'SALES' | 'KURIR')}
+                  icon="▾"
+                />
+
+                {/* Cabang */}
+                <GlassSelect
+                  label="Cabang"
+                  value={cabang}
+                  options={cabangOptions}
+                  visible={openCabang}
+                  onOpen={() => setOpenCabang(true)}
+                  onClose={() => setOpenCabang(false)}
+                  onSelect={v => setCabang(v)}
+                  icon="▾"
+                />
+
                 {/* Password */}
                 <Text style={styles.label}>Password</Text>
                 <View style={styles.inputContainer}>
@@ -216,29 +239,6 @@ export default function RegisterScreen({ navigation }: any) {
                     </Text>
                   </TouchableOpacity>
                 </View>
-
-                <GlassSelect
-                  label="Jabatan"
-                  value={jabatan}
-                  options={jabatanOptions}
-                  visible={openJabatan}
-                  onOpen={() => setOpenJabatan(true)}
-                  onClose={() => setOpenJabatan(false)}
-                  onSelect={v => setJabatan(v as 'SALES' | 'KURIR')}
-                  icon="▾"
-                />
-
-                {/* Cabang */}
-                <GlassSelect
-                  label="Cabang"
-                  value={cabang}
-                  options={cabangOptions}
-                  visible={openCabang}
-                  onOpen={() => setOpenCabang(true)}
-                  onClose={() => setOpenCabang(false)}
-                  onSelect={v => setCabang(v)}
-                  icon="▾"
-                />
 
                 {/* Button Register */}
                 <TouchableOpacity
