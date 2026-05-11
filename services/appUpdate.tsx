@@ -1,5 +1,5 @@
 import DeviceInfo from 'react-native-device-info';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
 const UPDATE_MANIFEST_URL = 'http://103.94.238.252:8182/releases/latest.json';
@@ -20,10 +20,23 @@ export type AppUpdateCheckResult = {
 };
 
 export type DownloadUpdateResult =
-  | { status: 'opened-installer' }
+  | { status: 'opened-download-location' }
   | { status: 'downloaded-no-installer' }
   | { status: 'failed-network' }
   | { status: 'failed-other' };
+
+const openDownloadedApkLocation = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return false;
+  }
+
+  try {
+    await Linking.sendIntent('android.intent.action.VIEW_DOWNLOADS');
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const toNumber = (value: string | number | undefined) => {
   const parsed = Number(value);
@@ -157,15 +170,13 @@ export const downloadUpdateApk = async (
       typeof response?.path === 'function' ? response.path() : '';
 
     if (downloadedPath) {
-      try {
-        await ReactNativeBlobUtil.android.actionViewIntent(
-          downloadedPath,
-          'application/vnd.android.package-archive',
-        );
-        return { status: 'opened-installer' };
-      } catch {
-        return { status: 'downloaded-no-installer' };
+      const openedLocation = await openDownloadedApkLocation();
+
+      if (openedLocation) {
+        return { status: 'opened-download-location' };
       }
+
+      return { status: 'downloaded-no-installer' };
     }
 
     // Download manager may finish without a resolvable path on some devices.

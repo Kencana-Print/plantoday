@@ -313,7 +313,7 @@ export default function TrackingPenawaranScreen({}: Props) {
                     key={`${mapItem.pen_id}-${mapIndex}`}
                   >
                     <Text style={styles.mapItemTitle}>
-                      {mapItem.no_map || `MAP belum tersedia`}
+                      {mapIndex + 1}. {mapItem.no_map || `MAP belum tersedia`}
                     </Text>
                     <Text style={styles.dropdownText}>
                       Nama: {mapItem.map_nama || '-'}
@@ -396,7 +396,6 @@ export default function TrackingPenawaranScreen({}: Props) {
               Pantau status MAP per nomor penawaran
             </Text>
             <View style={styles.filterCard}>
-              <Text style={styles.filterLabel}>Range Tanggal</Text>
               <View style={styles.dateRow}>
                 <TouchableOpacity
                   style={styles.dateChip}
@@ -485,9 +484,6 @@ export default function TrackingPenawaranScreen({}: Props) {
           ) : (
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyTitle}>Belum ada data</Text>
-              <Text style={styles.emptySub}>
-                Coba ubah range tanggal atau kata kunci pencarian.
-              </Text>
             </View>
           )
         }
@@ -543,11 +539,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
     ...PENAWARAN_SHADOW.card,
-  },
-  filterLabel: {
-    color: THEME.ink,
-    fontWeight: '800',
-    marginBottom: 8,
   },
   dateRow: { marginTop: 2, flexDirection: 'row', gap: 8 },
   dateChip: {
@@ -821,10 +812,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyTitle: { color: THEME.ink, fontSize: 16, fontWeight: '700' },
-  emptySub: {
-    marginTop: 6,
-    fontSize: 13,
-    color: THEME.muted,
-    textAlign: 'center',
-  },
 });

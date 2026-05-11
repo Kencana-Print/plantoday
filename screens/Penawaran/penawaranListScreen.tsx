@@ -589,6 +589,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     marginHorizontal: 20,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: THEME.line,
     ...PENAWARAN_SHADOW.softCard,

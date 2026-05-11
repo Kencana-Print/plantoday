@@ -120,6 +120,10 @@ type PickedImage = {
   base64?: string;
 };
 
+type FormImage =
+  | ({ source: 'existing' } & PickedImage)
+  | ({ source: 'new' } & PickedImage);
+
 const MAX_IMAGE_SIZE = 1024 * 1024;
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
@@ -136,7 +140,10 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
 
   const mode: 'create' | 'edit' =
     route?.params?.mode === 'edit' ? 'edit' : 'create';
-  const initial = route?.params?.initialData || {};
+  const initial = useMemo(
+    () => route?.params?.initialData || {},
+    [route?.params],
+  );
   const nomor = String(route?.params?.nomor || initial?.mh_nomor || '');
 
   const isManager = useMemo(
@@ -204,9 +211,42 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   );
   const [mh_ket, setMhKet] = useState(String(initial?.mh_ket || ''));
 
-  const [image1, setImage1] = useState<PickedImage | null>(null);
-  const [image2, setImage2] = useState<PickedImage | null>(null);
-  const imageList = [image1, image2].filter(Boolean) as PickedImage[];
+  const [image1, setImage1] = useState<FormImage | null>(null);
+  const [image2, setImage2] = useState<FormImage | null>(null);
+
+  useEffect(() => {
+    if (mode !== 'edit') return;
+
+    const existing1 = String(initial?.gambar_1_url || '').trim();
+    const existing2 = String(initial?.gambar_2_url || '').trim();
+
+    setImage1(
+      existing1
+        ? {
+            source: 'existing',
+            uri: existing1,
+            type: 'image/jpeg',
+            fileName: String(initial?.gambar_1_file || `${nomor}.jpg`),
+          }
+        : null,
+    );
+
+    setImage2(
+      existing2
+        ? {
+            source: 'existing',
+            uri: existing2,
+            type: 'image/jpeg',
+            fileName: String(initial?.gambar_2_file || `${nomor}-2.jpg`),
+          }
+        : null,
+    );
+  }, [initial, mode, nomor]);
+
+  const imageList = [
+    image1 ? { slot: 1 as const, image: image1 } : null,
+    image2 ? { slot: 2 as const, image: image2 } : null,
+  ].filter(Boolean) as Array<{ slot: 1 | 2; image: FormImage }>;
 
   useEffect(() => {
     const selectedCustomer = route?.params?.selectedCustomer;
@@ -276,7 +316,8 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       });
       return;
     }
-    const img: PickedImage = {
+    const img: FormImage = {
+      source: 'new',
       uri: asset.uri,
       type: asset.type,
       fileName: asset.fileName,
@@ -304,15 +345,16 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   };
 
   const removeImageAt = (index: number) => {
-    if (index === 0) {
-      setImage1(image2);
-      setImage2(null);
+    if (index === 0 || index === 1) {
+      setImage1(null);
       return;
     }
-    setImage2(null);
+    if (index === 2) {
+      setImage2(null);
+    }
   };
 
-  const toUploadPayload = (img: PickedImage): PermintaanHargaImageUpload => ({
+  const toUploadPayload = (img: FormImage): PermintaanHargaImageUpload => ({
     uri: img.uri,
     type: 'image/jpeg',
     name: `permintaan-harga-${Date.now()}.jpg`,
@@ -450,7 +492,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       hasToken: Boolean(token),
     });
     if (targetNomor) {
-      if (image1) {
+      if (image1?.source === 'new') {
         try {
           console.log('[permintaanHargaForm.submit] start upload', {
             nomor: targetNomor,
@@ -486,7 +528,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
         }
       }
 
-      if (image2) {
+      if (image2?.source === 'new') {
         try {
           console.log('[permintaanHargaForm.submit] start upload', {
             nomor: targetNomor,
@@ -834,26 +876,33 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
             </TouchableOpacity>
             {imageList.length > 0 ? (
               <View style={styles.previewWrap}>
-                {imageList.map((img, index) => (
-                  <View style={styles.previewItem} key={`preview-${index}`}>
-                    <Text style={styles.previewLabel}>Preview {index + 1}</Text>
+                {imageList.map(({ slot, image }) => (
+                  <View style={styles.previewItem} key={`preview-${slot}`}>
+                    <Text style={styles.previewLabel}>
+                      Preview {slot}{' '}
+                      {image.source === 'existing' ? '(existing)' : '(new)'}
+                    </Text>
                     <View style={styles.previewImageWrap}>
                       <Image
-                        source={{ uri: img.uri }}
+                        source={{ uri: image.uri }}
                         style={styles.previewImage}
                         resizeMode="cover"
                       />
                       <TouchableOpacity
                         style={styles.previewCloseBtn}
-                        onPress={() => removeImageAt(index)}
+                        onPress={() => removeImageAt(slot)}
                         activeOpacity={0.9}
                       >
                         <Text style={styles.previewCloseBtnText}>×</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={styles.helper}>
-                      Ukuran: {formatSizeMb(img.fileSize)}
-                    </Text>
+                    {image.source === 'new' ? (
+                      <Text style={styles.helper}>
+                        Ukuran: {formatSizeMb(image.fileSize)}
+                      </Text>
+                    ) : (
+                      <Text style={styles.helper}>Sumber: server</Text>
+                    )}
                   </View>
                 ))}
               </View>

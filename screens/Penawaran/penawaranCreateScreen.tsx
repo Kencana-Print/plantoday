@@ -1490,7 +1490,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                   }));
                 }}
                 style={styles.nomorSearchInput}
-                placeholder="Cari no permintaan / pekerjaan / customer / kain"
+                placeholder="..."
                 placeholderTextColor={THEME.muted}
               />
               {permintaanPopupRowIndex !== null &&
@@ -1627,13 +1627,13 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                             Kain: {opt.bahan || '-'}
                           </Text>
                           <Text style={styles.searchResultMeta}>
-                            Ukuran / P x L: {ukuranRingkas}
+                            Ukuran: {ukuranRingkas}
                           </Text>
                           <Text style={styles.searchResultMeta}>
-                            Qty / Jml Order: {opt.qty || 0}
+                            Jumlah Order: {opt.qty || 0}
                           </Text>
                           <Text style={styles.searchResultMeta}>
-                            Harga Referensi: {hargaLabel}
+                            Estimasi harga / PCS: {hargaLabel}
                           </Text>
                         </TouchableOpacity>
                       );

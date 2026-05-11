@@ -90,18 +90,19 @@ export default function App() {
       setDownloadProgress(percent);
     });
 
-    if (downloadResult.status === 'opened-installer') {
+    if (downloadResult.status === 'opened-download-location') {
       Toast.show({
         type: 'glassSuccess',
         text1: 'Download Selesai',
-        text2: 'Installer update sedang dibuka.',
+        text2:
+          'Membuka daftar download. Silakan pilih file APK untuk instalasi.',
       });
     } else if (downloadResult.status === 'downloaded-no-installer') {
       Toast.show({
         type: 'glassSuccess',
         text1: 'Download Selesai',
         text2:
-          'File update sudah diunduh. Buka dari notifikasi/download manager untuk instalasi.',
+          'File update sudah diunduh. Buka file APK dari download manager untuk instalasi.',
       });
     } else if (downloadResult.status === 'failed-network') {
       await Linking.openURL(pendingUpdate.apkUrl);

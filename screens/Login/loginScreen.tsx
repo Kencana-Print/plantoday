@@ -156,10 +156,12 @@ export default function LoginScreen({ navigation }: any) {
     setLoading(true);
     try {
       const deviceId = await DeviceInfo.getAndroidId();
+      const versiApp = `V. ${DeviceInfo.getVersion()}`;
       const res = await api.post('/login', {
         username: username.trim(),
         password,
         deviceId,
+        versiApp,
       });
 
       if (!res.data?.success) {
@@ -457,7 +459,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: THEME.line,
-    backgroundColor: '#fff',
+    backgroundColor: THEME.soft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
