@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   BackHandler,
   Modal,
   Platform,
@@ -19,6 +18,7 @@ import Toast from 'react-native-toast-message';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/authContext';
+import { ListSkeleton } from '../../components/loadingSkeleton';
 import {
   getPenawaranList,
   PenawaranListItem,
@@ -352,8 +352,10 @@ export default function PenawaranListScreen({ navigation }: any) {
         ListEmptyComponent={
           loading ? (
             <View style={styles.loadingWrap}>
-              <ActivityIndicator size="large" color={THEME.primary} />
               <Text style={styles.loadingText}>Memuat data penawaran...</Text>
+              <View style={styles.skeletonWrap}>
+                <ListSkeleton rows={4} />
+              </View>
             </View>
           ) : (
             <View style={styles.emptyWrap}>
@@ -651,15 +653,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   loadingWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
+    paddingVertical: 12,
   },
   loadingText: {
     color: THEME.muted,
     fontSize: 13,
+    textAlign: 'center',
   },
+  skeletonWrap: { marginTop: 10 },
   emptyWrap: {
     alignItems: 'center',
     paddingTop: 42,

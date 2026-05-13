@@ -1,7 +1,6 @@
 /* eslint-disable react-native/no-inline-styles */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   BackHandler,
   Modal,
@@ -21,6 +20,7 @@ import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/authContext';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { ListSkeleton } from '../../components/loadingSkeleton';
 import {
   getPermintaanHargaList,
   PermintaanHargaItem,
@@ -381,10 +381,12 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
         ListEmptyComponent={
           loading ? (
             <View style={styles.loadingWrap}>
-              <ActivityIndicator size="large" color={THEME.primary} />
               <Text style={styles.loadingText}>
                 Memuat data permintaan harga...
               </Text>
+              <View style={styles.skeletonWrap}>
+                <ListSkeleton rows={4} />
+              </View>
             </View>
           ) : (
             <View style={styles.emptyWrap}>
@@ -637,12 +639,10 @@ const styles = StyleSheet.create({
     color: THEME.ink,
   },
   loadingWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
+    paddingVertical: 12,
   },
-  loadingText: { color: THEME.muted, fontSize: 13 },
+  loadingText: { color: THEME.muted, fontSize: 13, textAlign: 'center' },
+  skeletonWrap: { marginTop: 10 },
   listContent: {
     paddingBottom: 24,
     paddingTop: 4,

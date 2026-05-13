@@ -14,6 +14,11 @@ export type TrackingMapListItem = {
     tanggal_bast?: string;
     tanggal_sj_map?: string;
     nomor_sj?: string;
+    mspk_nama?: string;
+    mspk_ukuran?: string;
+    mspk_kain?: string;
+    mspk_finishing?: string;
+    mspk_keterangan?: string;
 };
 
 export const getTrackingMapList = async (

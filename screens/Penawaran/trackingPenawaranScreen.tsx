@@ -17,6 +17,7 @@ import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/authContext';
+import { ListSkeleton } from '../../components/loadingSkeleton';
 import {
   getTrackingPenawaranDetail,
   TrackingMapDetailItem,
@@ -476,8 +477,10 @@ export default function TrackingPenawaranScreen({}: Props) {
         ListEmptyComponent={
           loading ? (
             <View style={styles.loadingWrap}>
-              <ActivityIndicator size="large" color={THEME.primary} />
               <Text style={styles.loadingText}>Memuat data tracking...</Text>
+              <View style={styles.skeletonWrap}>
+                <ListSkeleton rows={4} />
+              </View>
             </View>
           ) : (
             <View style={styles.emptyWrap}>
@@ -799,8 +802,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
   },
-  loadingWrap: { paddingVertical: 30, alignItems: 'center' },
-  loadingText: { marginTop: 8, color: THEME.muted, fontSize: 13 },
+  loadingWrap: { paddingVertical: 14 },
+  loadingText: { color: THEME.muted, fontSize: 13, textAlign: 'center' },
+  skeletonWrap: { marginTop: 10 },
   emptyWrap: {
     backgroundColor: THEME.card,
     borderWidth: 1,
