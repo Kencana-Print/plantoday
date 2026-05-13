@@ -34,6 +34,7 @@ import CariPerusahaanScreen from '../screens/Penawaran/cariPerusahaanScreen';
 import CariSalesScreen from '../screens/Penawaran/cariSalesScreen';
 import CariNomorPenawaranScreen from '../screens/Penawaran/cariNomorPenawaranScreen';
 import TrackingPenawaranScreen from '../screens/Penawaran/trackingPenawaranScreen';
+import TrackingMapScreen from '../screens/Penawaran/trackingMapScreen';
 import PermintaanHargaListScreen from '../screens/PermintaanHarga/permintaanHargaListScreen';
 import PermintaanHargaDetailScreen from '../screens/PermintaanHarga/permintaanHargaDetailScreen';
 import PermintaanHargaFormScreen from '../screens/PermintaanHarga/permintaanHargaFormScreen';
@@ -80,6 +81,7 @@ export type RootStackParamList = {
   CariSalesPenawaran: { from: string };
   CariNomorPenawaran: { from: string };
   TrackingPenawaran: undefined;
+  TrackingMap: undefined;
   PermintaanHargaList: undefined;
   PermintaanHargaDetail: { nomor: string };
   PermintaanHargaForm: {
@@ -209,6 +211,10 @@ export default function AppNavigator() {
                 <Stack.Screen
                   name="TrackingPenawaran"
                   component={TrackingPenawaranScreen}
+                />
+                <Stack.Screen
+                  name="TrackingMap"
+                  component={TrackingMapScreen}
                 />
                 <Stack.Screen
                   name="PermintaanHargaList"

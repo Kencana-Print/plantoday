@@ -15,28 +15,14 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { PENAWARAN_SHADOW, PENAWARAN_THEME } from './penawaranTheme';
 import { useAuth } from '../../context/authContext';
 import {
-  getTrackingPenawaranDetail,
-  TrackingMapDetailItem,
-  getTrackingPenawaranList,
-  TrackingPenawaranListItem,
-} from '../../services/trackingPenawaranApi';
-import { PENAWARAN_SHADOW, PENAWARAN_THEME } from './penawaranTheme';
-import { RootStackParamList } from '../../navigation/appNavigator';
+  getTrackingMapList,
+  TrackingMapListItem,
+} from '../../services/trackingMapApi';
 
 const THEME = PENAWARAN_THEME;
-
-const DIVISI_OPTIONS = [
-  { kode: '1', label: '1 - SPANDUK' },
-  { kode: '3', label: '3 - KAOSAN' },
-  { kode: '4', label: '4 - GARMEN' },
-  { kode: '5', label: '5 - MMT' },
-  { kode: '6', label: '6 - FIT U' },
-];
-
-type Props = NativeStackScreenProps<RootStackParamList, 'TrackingPenawaran'>;
 
 const toYmd = (d: Date) => {
   const yyyy = d.getFullYear();
@@ -53,6 +39,13 @@ const getCurrentMonth = () => {
   };
 };
 
+const parseYmd = (ymd: string) => {
+  const [y, m, d] = String(ymd || '')
+    .split('-')
+    .map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+};
+
 const formatDate = (ymd?: string) => {
   if (!ymd) return '-';
   const [y, m, d] = ymd.split('-').map(Number);
@@ -64,40 +57,7 @@ const formatDate = (ymd?: string) => {
   });
 };
 
-const parseYmd = (ymd: string) => {
-  const [y, m, d] = String(ymd || '')
-    .split('-')
-    .map(Number);
-  return new Date(y, (m || 1) - 1, d || 1);
-};
-
-const toReadableCloseStatus = (value?: string) => {
-  const v = String(value || '')
-    .trim()
-    .toUpperCase();
-  if (v === 'Y') return 'Sudah';
-  if (v === 'N') return 'Belum';
-  return '-';
-};
-
-const splitNotes = (value?: string) => {
-  const raw = String(value || '').trim();
-  if (!raw) return [] as string[];
-
-  return raw
-    .split(/\r?\n|\s*\|\s*|\s*;\s*|\s*•\s*/)
-    .map(v => v.trim())
-    .filter(Boolean);
-};
-
-const toReadableDivisi = (value?: number | string) => {
-  const kode = String(value ?? '').trim();
-  if (!kode) return '-';
-  const found = DIVISI_OPTIONS.find(option => option.kode === kode);
-  return found?.label || kode;
-};
-
-export default function TrackingPenawaranScreen({}: Props) {
+export default function TrackingMapScreen() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const initialRange = useMemo(() => getCurrentMonth(), []);
@@ -107,16 +67,7 @@ export default function TrackingPenawaranScreen({}: Props) {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [items, setItems] = useState<TrackingPenawaranListItem[]>([]);
-  const [openedNoPenawaran, setOpenedNoPenawaran] = useState<string | null>(
-    null,
-  );
-  const [detailMapByPenawaran, setDetailMapByPenawaran] = useState<
-    Record<string, TrackingMapDetailItem[]>
-  >({});
-  const [loadingDetailByPenawaran, setLoadingDetailByPenawaran] = useState<
-    Record<string, boolean>
-  >({});
+  const [items, setItems] = useState<TrackingMapListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSearchSubmitting, setIsSearchSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -132,12 +83,11 @@ export default function TrackingPenawaranScreen({}: Props) {
           return;
         }
 
-        const data = await getTrackingPenawaranList(
+        const data = await getTrackingMapList(
           {
             startDate,
             endDate,
             search: appliedSearch.trim() || undefined,
-            limit: 100,
           },
           token,
         );
@@ -148,8 +98,7 @@ export default function TrackingPenawaranScreen({}: Props) {
           type: 'glassError',
           text1: 'Error',
           text2:
-            err?.response?.data?.message ||
-            'Gagal mengambil data tracking penawaran',
+            err?.response?.data?.message || 'Gagal mengambil data tracking MAP',
         });
       } finally {
         setLoading(false);
@@ -166,24 +115,18 @@ export default function TrackingPenawaranScreen({}: Props) {
 
   const applyFilter = useCallback(() => {
     if (loading || isSearchSubmitting) return;
-
     const nextSearch = search.trim();
     const currentAppliedSearch = appliedSearch.trim();
-
-    // Hindari loading menggantung jika tombol ditekan saat filter tidak berubah.
     if (nextSearch === currentAppliedSearch) {
       setIsSearchSubmitting(false);
       return;
     }
-
     setIsSearchSubmitting(true);
     setAppliedSearch(nextSearch);
   }, [appliedSearch, isSearchSubmitting, loading, search]);
 
   const onChangeSearch = useCallback((value: string) => {
     setSearch(value);
-    // Samakan UX dengan form lain: saat input dikosongkan,
-    // list langsung kembali ke mode default (tanpa filter search).
     if (!value.trim()) {
       setAppliedSearch('');
     }
@@ -192,38 +135,6 @@ export default function TrackingPenawaranScreen({}: Props) {
   useEffect(() => {
     loadList();
   }, [appliedSearch, startDate, endDate, loadList]);
-
-  const loadMapDetails = useCallback(
-    async (noPenawaran: string) => {
-      if (!noPenawaran) return;
-      if (detailMapByPenawaran[noPenawaran]) return;
-
-      setLoadingDetailByPenawaran(prev => ({ ...prev, [noPenawaran]: true }));
-      try {
-        const data = await getTrackingPenawaranDetail(noPenawaran, token);
-        setDetailMapByPenawaran(prev => ({
-          ...prev,
-          [noPenawaran]: data?.map_details || [],
-        }));
-      } catch {
-        setDetailMapByPenawaran(prev => ({
-          ...prev,
-          [noPenawaran]: [],
-        }));
-        Toast.show({
-          type: 'glassError',
-          text1: 'Error',
-          text2: 'Gagal mengambil detail MAP',
-        });
-      } finally {
-        setLoadingDetailByPenawaran(prev => ({
-          ...prev,
-          [noPenawaran]: false,
-        }));
-      }
-    },
-    [detailMapByPenawaran, token],
-  );
 
   const onChangeStartDate = (_: any, selectedDate?: Date) => {
     if (Platform.OS !== 'ios') setShowStartPicker(false);
@@ -241,122 +152,45 @@ export default function TrackingPenawaranScreen({}: Props) {
     setEndDate(ymd);
   };
 
-  const renderItem = ({ item }: { item: TrackingPenawaranListItem }) => {
-    const isOpened = openedNoPenawaran === item.no_penawaran;
-    const nomorPenawaran = String(item.no_penawaran || '-').trim() || '-';
-    const customerName = String(item.customer || '').trim() || '-';
-    const noSpk = String(item.no_map || '')
-      .split(',')
-      .map(v => v.trim())
-      .filter(Boolean)
-      .join(', ');
-
+  const renderItem = ({ item }: { item: TrackingMapListItem }) => {
     return (
-      <TouchableOpacity
-        activeOpacity={0.9}
-        style={styles.rowCard}
-        onPress={async () => {
-          const nextOpened =
-            openedNoPenawaran === item.no_penawaran ? null : item.no_penawaran;
-          setOpenedNoPenawaran(nextOpened);
-          if (nextOpened) {
-            await loadMapDetails(nextOpened);
-          }
-        }}
-      >
+      <TouchableOpacity activeOpacity={0.9} style={styles.rowCard}>
         <View style={styles.rowHeader}>
           <View style={styles.rowLeft}>
-            <Text style={styles.rowLabel}>No. Penawaran</Text>
+            <Text style={styles.rowLabel}>MAP</Text>
             <Text style={styles.rowNo} numberOfLines={2}>
-              {nomorPenawaran}
+              {item.no_map || '-'}
             </Text>
             <Text style={styles.rowCompany} numberOfLines={2}>
-              {customerName}
+              {item.customer || '-'}
             </Text>
-            <Text style={styles.rowSub} numberOfLines={1}>
-              {formatDate(item.tanggal_penawaran)}
+            <Text style={styles.rowSub} numberOfLines={2}>
+              {item.alamat || '-'}
             </Text>
           </View>
           <View style={styles.rowRight}>
-            <Text style={styles.rowLabel}>Detail MAP</Text>
-            <Text style={styles.rowActionSub} numberOfLines={1}>
-              {isOpened ? 'Tap untuk tutup' : 'Tap untuk buka'}
+            <Text style={styles.rowLabel}>Detail</Text>
+            <Text style={styles.rowActionSub}>Tanggal MAP</Text>
+            <Text style={styles.rowActionHint}>
+              {formatDate(item.tanggal_map)}
             </Text>
-            <Text style={styles.rowActionHint}>-</Text>
-          </View>
-          <View style={styles.chevronWrap}>
-            <Text style={styles.chevron}>{isOpened ? '▲' : '▼'}</Text>
           </View>
         </View>
 
-        <Text style={styles.mapPreviewLabel}>List MAP</Text>
-        <Text style={styles.mapPreviewValue} numberOfLines={2}>
-          {noSpk || '-'}
-        </Text>
-
-        {isOpened && (
-          <View style={styles.dropdownBody}>
-            {loadingDetailByPenawaran[item.no_penawaran] ? (
-              <View style={styles.dropdownLoadingWrap}>
-                <ActivityIndicator size="small" color={THEME.primary} />
-                <Text style={styles.dropdownTextHint}>
-                  Memuat detail MAP...
-                </Text>
-              </View>
-            ) : (detailMapByPenawaran[item.no_penawaran] || []).length === 0 ? (
-              <Text style={styles.dropdownTextHint}>Belum ada detail MAP</Text>
-            ) : (
-              (detailMapByPenawaran[item.no_penawaran] || []).map(
-                (mapItem, mapIndex) => (
-                  <View
-                    style={styles.mapItemCard}
-                    key={`${mapItem.pen_id}-${mapIndex}`}
-                  >
-                    <Text style={styles.mapItemTitle}>
-                      {mapIndex + 1}. {mapItem.no_map || `MAP belum tersedia`}
-                    </Text>
-                    <Text style={styles.dropdownText}>
-                      Nama: {mapItem.map_nama || '-'}
-                    </Text>
-                    <Text style={styles.dropdownText}>
-                      Tanggal MAP: {formatDate(mapItem.tanggal_map)}
-                    </Text>
-                    <Text style={styles.dropdownText}>
-                      Dateline: {formatDate(mapItem.map_deadline)}
-                    </Text>
-                    <Text style={styles.dropdownText}>
-                      Divisi: {toReadableDivisi(mapItem.map_divisi)}
-                    </Text>
-                    <Text style={styles.dropdownText}>
-                      Status Proses: {mapItem.map_status || '-'}
-                    </Text>
-                    <Text style={styles.dropdownText}>
-                      Status Close: {toReadableCloseStatus(mapItem.map_close)}
-                    </Text>
-                    <View style={styles.notesWrap}>
-                      <Text style={styles.notesTitle}>Catatan</Text>
-                      {splitNotes(mapItem.map_keterangan).length > 0 ? (
-                        splitNotes(mapItem.map_keterangan).map(
-                          (note, noteIndex) => (
-                            <View
-                              style={styles.noteItem}
-                              key={`${mapItem.pen_id}-${mapIndex}-note-${noteIndex}`}
-                            >
-                              <Text style={styles.noteBullet}>•</Text>
-                              <Text style={styles.noteText}>{note}</Text>
-                            </View>
-                          ),
-                        )
-                      ) : (
-                        <Text style={styles.dropdownTextHint}>-</Text>
-                      )}
-                    </View>
-                  </View>
-                ),
-              )
-            )}
+        <View style={styles.statusWrap}>
+          <View style={styles.statusChip}>
+            <Text style={styles.statusLabel}>Tanggal BAST</Text>
+            <Text style={styles.statusValue}>
+              {formatDate(item.tanggal_bast)}
+            </Text>
           </View>
-        )}
+          <View style={styles.statusChip}>
+            <Text style={styles.statusLabel}>Tanggal SJ MAP</Text>
+            <Text style={styles.statusValue}>
+              {formatDate(item.tanggal_sj_map)}
+            </Text>
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -376,7 +210,7 @@ export default function TrackingPenawaranScreen({}: Props) {
 
       <FlatList
         data={items}
-        keyExtractor={item => item.no_penawaran}
+        keyExtractor={(item, idx) => `${item.no_map}-${idx}`}
         renderItem={renderItem}
         contentContainerStyle={[
           styles.listContainer,
@@ -391,8 +225,8 @@ export default function TrackingPenawaranScreen({}: Props) {
         }
         ListHeaderComponent={
           <View style={styles.headerWrap}>
-            <Text style={styles.title}>Tracking Penawaran</Text>
-            <Text style={styles.subtitle}>Pantau status penawaran</Text>
+            <Text style={styles.title}>Tracking MAP</Text>
+            <Text style={styles.subtitle}>Pantau MAP</Text>
             <View style={styles.filterCard}>
               <View style={styles.dateRow}>
                 <TouchableOpacity
@@ -421,7 +255,7 @@ export default function TrackingPenawaranScreen({}: Props) {
                 <TextInput
                   value={search}
                   onChangeText={onChangeSearch}
-                  placeholder="Cari no penawaran"
+                  placeholder="Cari MAP / customer / alamat"
                   placeholderTextColor={THEME.muted}
                   style={styles.searchInput}
                   returnKeyType="search"
@@ -620,12 +454,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: THEME.line,
   },
-  tableHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 2,
-  },
   summaryText: {
     color: THEME.ink,
     fontWeight: '800',
@@ -683,29 +511,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 130,
   },
-  chevronWrap: {
-    marginTop: 15,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    backgroundColor: THEME.soft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-  chevron: {
-    color: THEME.primary,
-    fontWeight: '900',
-    fontSize: 11,
-    lineHeight: 12,
-  },
-  rowActionTitle: {
-    color: THEME.primary,
-    fontSize: 13,
-    fontWeight: '900',
-  },
   rowActionSub: {
     marginTop: 3,
     color: THEME.muted,
@@ -715,89 +520,34 @@ const styles = StyleSheet.create({
   },
   rowActionHint: {
     marginTop: 3,
-    color: THEME.muted,
+    color: THEME.primary,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     textAlign: 'right',
   },
-  mapPreviewLabel: {
-    marginTop: 2,
+  statusWrap: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statusChip: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    backgroundColor: THEME.soft,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  statusLabel: {
     color: THEME.muted,
     fontSize: 11,
     fontWeight: '700',
   },
-  mapPreviewValue: {
-    marginTop: 2,
+  statusValue: {
     color: THEME.ink,
+    marginTop: 2,
     fontSize: 12,
     fontWeight: '800',
-    lineHeight: 18,
-  },
-  dropdownBody: {
-    borderTopWidth: 1,
-    borderTopColor: THEME.line,
-    paddingTop: 10,
-    marginTop: 2,
-  },
-  dropdownLoadingWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  mapItemCard: {
-    borderWidth: 1,
-    borderColor: THEME.line,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    backgroundColor: THEME.soft,
-    marginBottom: 8,
-  },
-  mapItemTitle: {
-    color: THEME.primary,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  notesWrap: {
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    borderRadius: 8,
-    padding: 8,
-    backgroundColor: THEME.card,
-  },
-  notesTitle: {
-    color: THEME.ink,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  noteItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 2,
-  },
-  noteBullet: {
-    color: THEME.primary,
-    fontWeight: '900',
-    marginRight: 6,
-    lineHeight: 18,
-  },
-  noteText: {
-    flex: 1,
-    color: THEME.ink,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  dropdownText: {
-    color: THEME.ink,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  dropdownTextHint: {
-    color: THEME.muted,
-    fontWeight: '700',
-    marginTop: 6,
-    fontSize: 12,
   },
   loadingWrap: { paddingVertical: 30, alignItems: 'center' },
   loadingText: { marginTop: 8, color: THEME.muted, fontSize: 13 },

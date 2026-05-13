@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
+  AppStateStatus,
   Animated,
   Easing,
   Linking,
@@ -40,19 +42,63 @@ export default function App() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const modalTranslateY = useRef(new Animated.Value(28)).current;
   const modalOpacity = useRef(new Animated.Value(0)).current;
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const isCheckingUpdateRef = useRef(false);
+  const lastCheckAtRef = useRef(0);
 
   useEffect(() => {
-    const runUpdateCheck = async () => {
-      const update = await checkAppUpdate();
-
-      if (!update || !update.apkUrl) {
+    const runUpdateCheck = async (source: 'startup' | 'foreground') => {
+      if (isCheckingUpdateRef.current) {
         return;
       }
 
-      setPendingUpdate(update);
+      const now = Date.now();
+      const minimumIntervalMs = 30 * 1000;
+      if (now - lastCheckAtRef.current < minimumIntervalMs) {
+        return;
+      }
+
+      isCheckingUpdateRef.current = true;
+      lastCheckAtRef.current = now;
+
+      try {
+        console.info('[AppUpdate] Trigger check', { source });
+        const update = await checkAppUpdate();
+
+        if (!update || !update.apkUrl) {
+          return;
+        }
+
+        setPendingUpdate(current => {
+          if (current && current.versionCode >= update.versionCode) {
+            return current;
+          }
+
+          return update;
+        });
+      } finally {
+        isCheckingUpdateRef.current = false;
+      }
     };
 
-    runUpdateCheck();
+    runUpdateCheck('startup');
+
+    const subscription = AppState.addEventListener('change', nextState => {
+      const prevState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      const becameActive =
+        (prevState === 'background' || prevState === 'inactive') &&
+        nextState === 'active';
+
+      if (becameActive) {
+        runUpdateCheck('foreground');
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   useEffect(() => {

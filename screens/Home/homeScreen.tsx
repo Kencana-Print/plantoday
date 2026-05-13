@@ -65,6 +65,12 @@ const menus: MenuItem[] = [
     icon: '📌',
   },
   {
+    title: 'Tracking MAP',
+    route: 'TrackingMap',
+    roles: ['SALES', 'MANAGER'],
+    icon: '🗺️',
+  },
+  {
     title: 'Pengiriman Kurir',
     route: 'KurirMenu',
     roles: ['KURIR'],
