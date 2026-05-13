@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// export const PUBLIC_API_ORIGIN = 'http://103.94.238.252:3005'; //server produksi
-export const PUBLIC_API_ORIGIN = 'http://10.0.2.2:3001'; // lokal android emulator
+export const PUBLIC_API_ORIGIN = 'http://103.94.238.252:3005'; //server produksi
+// export const PUBLIC_API_ORIGIN = 'http://10.0.2.2:3001'; // lokal android emulator
 export const PUBLIC_IMAGE_READ_ORIGIN = 'http://103.94.238.252:8182';
 export const PUBLIC_IMAGE_UPLOAD_ORIGIN = 'http://103.94.238.252:8080';
 export const PUBLIC_IMAGE_BASE_PATH = '/images/mintaharga';
