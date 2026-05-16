@@ -10,6 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
@@ -108,6 +109,10 @@ export default function TrackingPenawaranScreen({}: Props) {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
+  const [salesSearch, setSalesSearch] = useState('');
+  const [appliedSalesSearch, setAppliedSalesSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [appliedCustomerSearch, setAppliedCustomerSearch] = useState('');
   const [items, setItems] = useState<TrackingPenawaranListItem[]>([]);
   const [openedNoPenawaran, setOpenedNoPenawaran] = useState<string | null>(
     null,
@@ -122,6 +127,21 @@ export default function TrackingPenawaranScreen({}: Props) {
   const [isSearchSubmitting, setIsSearchSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Picker States
+  const [masterSales, setMasterSales] = useState<string[]>([]);
+  const [masterCustomer, setMasterCustomer] = useState<string[]>([]);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerType, setPickerType] = useState<'sales' | 'customer' | null>(
+    null,
+  );
+  const [pickerSearch, setPickerSearch] = useState('');
+
+  const openPicker = (type: 'sales' | 'customer') => {
+    setPickerType(type);
+    setPickerSearch('');
+    setPickerVisible(true);
+  };
+
   const loadList = useCallback(
     async (isRefresh = false) => {
       if (isRefresh) setRefreshing(true);
@@ -133,16 +153,21 @@ export default function TrackingPenawaranScreen({}: Props) {
           return;
         }
 
-        const data = await getTrackingPenawaranList(
-          {
-            startDate,
-            endDate,
-            search: appliedSearch.trim() || undefined,
-            limit: 100,
-          },
-          token,
-        );
-        setItems(data);
+        const { items: newItems, filter_options } =
+          await getTrackingPenawaranList(
+            {
+              startDate,
+              endDate,
+              search: appliedSearch.trim() || undefined,
+              sales: appliedSalesSearch.trim() || undefined,
+              customer: appliedCustomerSearch.trim() || undefined,
+              limit: 100,
+            },
+            token,
+          );
+        setItems(newItems);
+        setMasterSales(filter_options.sales);
+        setMasterCustomer(filter_options.customers);
       } catch (err: any) {
         setItems([]);
         Toast.show({
@@ -158,7 +183,14 @@ export default function TrackingPenawaranScreen({}: Props) {
         setIsSearchSubmitting(false);
       }
     },
-    [appliedSearch, endDate, startDate, token],
+    [
+      appliedSearch,
+      appliedSalesSearch,
+      appliedCustomerSearch,
+      endDate,
+      startDate,
+      token,
+    ],
   );
 
   useEffect(() => {
@@ -170,16 +202,35 @@ export default function TrackingPenawaranScreen({}: Props) {
 
     const nextSearch = search.trim();
     const currentAppliedSearch = appliedSearch.trim();
+    const nextSales = salesSearch.trim();
+    const currentAppliedSales = appliedSalesSearch.trim();
+    const nextCustomer = customerSearch.trim();
+    const currentAppliedCustomer = appliedCustomerSearch.trim();
 
     // Hindari loading menggantung jika tombol ditekan saat filter tidak berubah.
-    if (nextSearch === currentAppliedSearch) {
+    if (
+      nextSearch === currentAppliedSearch &&
+      nextSales === currentAppliedSales &&
+      nextCustomer === currentAppliedCustomer
+    ) {
       setIsSearchSubmitting(false);
       return;
     }
 
     setIsSearchSubmitting(true);
     setAppliedSearch(nextSearch);
-  }, [appliedSearch, isSearchSubmitting, loading, search]);
+    setAppliedSalesSearch(nextSales);
+    setAppliedCustomerSearch(nextCustomer);
+  }, [
+    appliedSearch,
+    appliedSalesSearch,
+    appliedCustomerSearch,
+    isSearchSubmitting,
+    loading,
+    search,
+    salesSearch,
+    customerSearch,
+  ]);
 
   const onChangeSearch = useCallback((value: string) => {
     setSearch(value);
@@ -192,7 +243,14 @@ export default function TrackingPenawaranScreen({}: Props) {
 
   useEffect(() => {
     loadList();
-  }, [appliedSearch, startDate, endDate, loadList]);
+  }, [
+    appliedSearch,
+    appliedSalesSearch,
+    appliedCustomerSearch,
+    startDate,
+    endDate,
+    loadList,
+  ]);
 
   const loadMapDetails = useCallback(
     async (noPenawaran: string) => {
@@ -246,6 +304,7 @@ export default function TrackingPenawaranScreen({}: Props) {
     const isOpened = openedNoPenawaran === item.no_penawaran;
     const nomorPenawaran = String(item.no_penawaran || '-').trim() || '-';
     const customerName = String(item.customer || '').trim() || '-';
+    const salesName = String(item.sales || '').trim() || '-';
     const noSpk = String(item.no_map || '')
       .split(',')
       .map(v => v.trim())
@@ -274,6 +333,7 @@ export default function TrackingPenawaranScreen({}: Props) {
             <Text style={styles.rowCompany} numberOfLines={2}>
               {customerName}
             </Text>
+            <Text style={styles.rowSales}>Sales: {salesName}</Text>
             <Text style={styles.rowSub} numberOfLines={1}>
               {formatDate(item.tanggal_penawaran)}
             </Text>
@@ -442,6 +502,64 @@ export default function TrackingPenawaranScreen({}: Props) {
                 ) : null}
               </View>
 
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <TouchableOpacity
+                  style={[styles.searchBox, { flex: 1, marginTop: 0 }]}
+                  onPress={() => openPicker('sales')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.searchInput,
+                      !salesSearch && { color: THEME.muted },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {salesSearch || 'Filter Sales'}
+                  </Text>
+                  {salesSearch.trim() ? (
+                    <TouchableOpacity
+                      style={styles.clearSearchButton}
+                      onPress={() => {
+                        setSalesSearch('');
+                        setAppliedSalesSearch('');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.clearSearchButtonText}>x</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.searchBox, { flex: 1, marginTop: 0 }]}
+                  onPress={() => openPicker('customer')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.searchInput,
+                      !customerSearch && { color: THEME.muted },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {customerSearch || 'Filter Customer'}
+                  </Text>
+                  {customerSearch.trim() ? (
+                    <TouchableOpacity
+                      style={styles.clearSearchButton}
+                      onPress={() => {
+                        setCustomerSearch('');
+                        setAppliedCustomerSearch('');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.clearSearchButtonText}>x</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity
                 style={styles.filterButton}
                 activeOpacity={0.88}
@@ -506,6 +624,88 @@ export default function TrackingPenawaranScreen({}: Props) {
           onChange={onChangeEndDate}
         />
       )}
+
+      <Modal
+        visible={pickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setPickerVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              Pilih {pickerType === 'sales' ? 'Sales' : 'Customer'}
+            </Text>
+            <View style={styles.modalSearchWrap}>
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Cari..."
+                placeholderTextColor={THEME.muted}
+                value={pickerSearch}
+                onChangeText={setPickerSearch}
+              />
+            </View>
+            {false ? (
+              <ActivityIndicator
+                size="large"
+                color={THEME.primary}
+                style={{ margin: 20 }}
+              />
+            ) : (
+              <FlatList
+                data={(pickerType === 'sales'
+                  ? masterSales
+                  : masterCustomer
+                ).filter(opt =>
+                  (opt || '')
+                    .toLowerCase()
+                    .includes(pickerSearch.toLowerCase()),
+                )}
+                keyExtractor={(_, idx) => String(idx)}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.modalOption}
+                    onPress={() => {
+                      if (pickerType === 'sales') {
+                        setSalesSearch(item);
+                        setAppliedSalesSearch(item);
+                      } else {
+                        setCustomerSearch(item);
+                        setAppliedCustomerSearch(item);
+                      }
+                      setPickerVisible(false);
+                    }}
+                  >
+                    <Text style={styles.modalOptionText}>{item}</Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text
+                    style={{
+                      textAlign: 'center',
+                      marginTop: 20,
+                      color: THEME.muted,
+                    }}
+                  >
+                    Data tidak ditemukan
+                  </Text>
+                }
+                style={{ maxHeight: 300 }}
+              />
+            )}
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setPickerVisible(false)}
+            >
+              <Text style={styles.modalCloseBtnText}>Batal</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -669,6 +869,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 18,
   },
+  rowSales: {
+    marginTop: 2,
+    color: THEME.primary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   rowLabel: {
     color: THEME.muted,
     fontSize: 11,
@@ -814,4 +1020,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyTitle: { color: THEME.ink, fontSize: 16, fontWeight: '700' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    padding: 20,
+    ...PENAWARAN_SHADOW.card,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: THEME.ink,
+    marginBottom: 12,
+  },
+  modalSearchWrap: {
+    borderWidth: 1,
+    borderColor: THEME.line,
+    borderRadius: 12,
+    marginBottom: 10,
+    backgroundColor: THEME.soft,
+  },
+  modalSearchInput: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: THEME.ink,
+  },
+  modalOption: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.line,
+  },
+  modalOptionText: {
+    fontSize: 14,
+    color: THEME.ink,
+    fontWeight: '700',
+  },
+  modalCloseBtn: {
+    marginTop: 16,
+    backgroundColor: THEME.soft,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalCloseBtnText: {
+    color: THEME.ink,
+    fontWeight: '800',
+  },
 });

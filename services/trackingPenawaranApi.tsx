@@ -4,6 +4,8 @@ export type TrackingPenawaranListParams = {
   startDate?: string;
   endDate?: string;
   search?: string;
+  sales?: string;
+  customer?: string;
   limit?: number;
 };
 
@@ -11,6 +13,7 @@ export type TrackingPenawaranListItem = {
   no_penawaran: string;
   tanggal_penawaran: string;
   customer: string;
+  sales: string;
   total_item: number;
   total_item_map: number;
   no_map: string;
@@ -73,11 +76,19 @@ export const getTrackingPenawaranList = async (
     params: {
       ...params,
       search: params.search?.trim() || undefined,
+      sales: params.sales?.trim() || undefined,
+      customer: params.customer?.trim() || undefined,
     },
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 
-  return (response?.data?.data ?? []) as TrackingPenawaranListItem[];
+  return {
+    items: (response?.data?.data ?? []) as TrackingPenawaranListItem[],
+    filter_options: (response?.data?.meta?.filter_options ?? { sales: [], customers: [] }) as {
+      sales: string[];
+      customers: string[];
+    },
+  };
 };
 
 export const getTrackingPenawaranDetail = async (

@@ -251,6 +251,18 @@ export const getMasterSales = async (search?: string) => {
   return (response.data?.data || []) as PenawaranMasterOption[];
 };
 
+export const getMasterCustomer = async (search?: string) => {
+  const response = await api.get('/penawaran/master/customer', {
+    params: { search: search || '' },
+  });
+  const data = response.data?.data || [];
+  return data.map((item: any) => ({
+    kode: item.cc_kode || item.kode || '',
+    nama: item.cc_nama || item.nama || '',
+    alamat: item.cc_alamat || item.alamat || '',
+  })) as PenawaranMasterOption[];
+};
+
 export const getMasterPenawaranNomor = async (search?: string) => {
   const response = await api.get('/penawaran/master/nomor', {
     params: { search: search || '' },
