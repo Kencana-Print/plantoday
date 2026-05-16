@@ -123,7 +123,7 @@ type FormImage =
   | ({ source: 'existing' } & PickedImage)
   | ({ source: 'new' } & PickedImage);
 
-const MAX_IMAGE_SIZE = 1024 * 1024;
+const MAX_IMAGE_SIZE = 1024 * 1024; // 1MB
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
 const formatSizeMb = (size?: number) => {
