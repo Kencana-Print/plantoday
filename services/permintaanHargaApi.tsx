@@ -1,5 +1,6 @@
 import api from './api';
 import { PUBLIC_IMAGE_READ_ORIGIN } from './api';
+import RNBlobUtil from 'react-native-blob-util';
 
 export type PermintaanHargaListParams = {
   startDate?: string;
@@ -190,55 +191,42 @@ export const uploadPermintaanHargaImage = async (
       normalizedType.includes('png') ? 'png' : 'jpg'
     }`;
   const normalizedName = fallbackName;
-  const normalizedUri = rawUri.startsWith('content://')
-    ? rawUri
-    : rawUri.startsWith('file://')
-    ? rawUri
-    : `file://${rawUri}`;
-  const uploadPath = normalizedUri.startsWith('file://')
-    ? normalizedUri.replace('file://', '')
-    : normalizedUri;
+
+  // Resolusi path untuk RNBlobUtil.fs.readFile:
+  // - content:// URI: diteruskan apa adanya (RNBlobUtil pakai ContentResolver Android)
+  // - file:// URI   : strip scheme 'file://' agar jadi path absolut biasa
+  const readPath = rawUri.startsWith('file://')
+    ? rawUri.slice('file://'.length)
+    : rawUri;
 
   console.log('[permintaanHargaApi.upload] prepare', {
     nomor,
     slot,
     hasToken: Boolean(token),
     rawUri,
-    normalizedUri,
-    uploadPath,
+    readPath,
     type: normalizedType,
     name: normalizedName,
   });
 
-  const blobToDataUrl =
-    typeof FileReader !== 'undefined'
-      ? (blob: Blob) =>
-          new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(String(reader.result || ''));
-            reader.onerror = () =>
-              reject(reader.error || new Error('read failed'));
-            reader.readAsDataURL(blob);
-          })
-      : null;
-
   try {
     let base64DataUrl = '';
+
+    // Prioritas 1: gunakan base64 yang sudah disediakan FE (jika ada)
     const providedBase64 = String(file.base64 || '').trim();
     if (providedBase64) {
       base64DataUrl = `data:${normalizedType};base64,${providedBase64}`;
+      console.log('[permintaanHargaApi.upload] using provided base64');
     } else {
-      if (!blobToDataUrl) {
-        throw new Error('FileReader tidak tersedia pada runtime');
+      // Prioritas 2: baca file via RNBlobUtil — reliable untuk content:// dan file:// di APK
+      console.log('[permintaanHargaApi.upload] reading via RNBlobUtil', {
+        readPath,
+      });
+      const base64String = await RNBlobUtil.fs.readFile(readPath, 'base64');
+      if (!base64String) {
+        throw new Error('File tidak dapat dibaca (konten kosong)');
       }
-      const localFileResponse = await fetch(normalizedUri);
-      if (!localFileResponse.ok) {
-        throw new Error(
-          `Gagal membaca file lokal untuk upload (${localFileResponse.status})`,
-        );
-      }
-      const localBlob = await localFileResponse.blob();
-      base64DataUrl = await blobToDataUrl(localBlob);
+      base64DataUrl = `data:${normalizedType};base64,${base64String}`;
     }
 
     const response = await api.post(
@@ -270,7 +258,7 @@ export const uploadPermintaanHargaImage = async (
       slot,
       status: response.status,
       data: parsed?.data,
-      mode: 'base64',
+      mode: providedBase64 ? 'provided-base64' : 'rnblob-base64',
     });
     return parsed?.data;
   } catch (err: any) {

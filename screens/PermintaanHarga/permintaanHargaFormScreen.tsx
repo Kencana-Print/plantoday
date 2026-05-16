@@ -117,7 +117,6 @@ type PickedImage = {
   type?: string;
   fileName?: string;
   fileSize?: number;
-  base64?: string;
 };
 
 type FormImage =
@@ -289,7 +288,6 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       mediaType: 'photo',
       selectionLimit: 1,
       quality: 0.9,
-      includeBase64: true,
     });
     const asset = res.assets?.[0];
     if (!asset?.uri) return;
@@ -322,7 +320,6 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       type: asset.type,
       fileName: asset.fileName,
       fileSize: asset.fileSize,
-      base64: asset.base64,
     };
     if (slot === 1) setImage1(img);
     else setImage2(img);
@@ -344,21 +341,18 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     });
   };
 
-  const removeImageAt = (index: number) => {
-    if (index === 0 || index === 1) {
+  const removeImageAt = (slot: 1 | 2) => {
+    if (slot === 1) {
       setImage1(null);
-      return;
-    }
-    if (index === 2) {
+    } else {
       setImage2(null);
     }
   };
 
   const toUploadPayload = (img: FormImage): PermintaanHargaImageUpload => ({
     uri: img.uri,
-    type: 'image/jpeg',
-    name: `permintaan-harga-${Date.now()}.jpg`,
-    base64: img.base64,
+    type: img.type || 'image/jpeg',
+    name: `permintaan-harga-${Date.now()}.${(img.type || '').includes('png') ? 'png' : 'jpg'}`,
   });
 
   const submit = async () => {
