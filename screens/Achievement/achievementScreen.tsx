@@ -736,6 +736,7 @@ const styles = StyleSheet.create({
 
   header: { marginBottom: 12 },
   title: {
+    marginTop: 30,
     fontSize: 25,
     fontWeight: '900',
     color: THEME.ink,

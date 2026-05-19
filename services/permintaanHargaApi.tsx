@@ -46,6 +46,7 @@ export type PermintaanHargaDetail = {
   mh_status: string;
   mh_harga_kalkulasi: number;
   mh_ket_kalkulasi: string;
+  mh_dateorder?: string;
   created_at_fmt?: string;
   gambar_1_url?: string;
   gambar_2_url?: string;
@@ -166,6 +167,19 @@ export const updatePermintaanHarga = async (
   return response.data?.data as { nomor: string };
 };
 
+export const deletePermintaanHarga = async (
+  nomor: string,
+  token?: string | null,
+) => {
+  const response = await api.delete(
+    `/permintaan-harga/${encodeURIComponent(nomor)}`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
+  return response.data as { success?: boolean; message?: string };
+};
+
 export const createPermintaanHargaCustomer = async (
   payload: PermintaanHargaCreateCustomerPayload,
   token?: string | null,
@@ -270,6 +284,29 @@ export const uploadPermintaanHargaImage = async (
       status: err?.status || err?.response?.status,
       responseData: err?.response?.data,
       requestMethod: 'POST',
+    });
+    throw err;
+  }
+};
+
+export const deletePermintaanHargaImage = async (
+  nomor: string,
+  slot: number,
+  token?: string | null,
+) => {
+  try {
+    const response = await api.delete(
+      `/permintaan-harga/${encodeURIComponent(nomor)}/gambar/${slot}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      },
+    );
+    return response.data;
+  } catch (err: any) {
+    console.error('[permintaanHargaApi.deleteImage] error', {
+      nomor,
+      slot,
+      message: err?.message,
     });
     throw err;
   }

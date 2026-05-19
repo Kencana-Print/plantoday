@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -18,7 +19,10 @@ import {
   PUBLIC_IMAGE_BASE_PATH,
   PUBLIC_IMAGE_READ_ORIGIN,
 } from '../../services/api';
-import { getPermintaanHargaDetail } from '../../services/permintaanHargaApi';
+import {
+  deletePermintaanHarga,
+  getPermintaanHargaDetail,
+} from '../../services/permintaanHargaApi';
 import { PENAWARAN_THEME } from '../Penawaran/penawaranTheme';
 
 const THEME = PENAWARAN_THEME;
@@ -207,14 +211,33 @@ export default function PermintaanHargaDetailScreen({
   const nomor = String(route?.params?.nomor || '');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [image1AspectRatio, setImage1AspectRatio] = useState(16 / 9);
   const [image2AspectRatio, setImage2AspectRatio] = useState(16 / 9);
   const [image1Error, setImage1Error] = useState(false);
   const [image2Error, setImage2Error] = useState(false);
-  const imageUrl1 = pickImageUrl(data, 1) || buildFallbackImageUrl(nomor, 1);
-  const imageUrl2 = pickImageUrl(data, 2) || buildFallbackImageUrl(nomor, 2);
-  const showImage1 = Boolean(imageUrl1) && !image1Error;
-  const showImage2 = Boolean(imageUrl2) && !image2Error;
+  const imageUrl1 = data ? pickImageUrl(data, 1) : buildFallbackImageUrl(nomor, 1);
+  const imageUrl2 = data ? pickImageUrl(data, 2) : buildFallbackImageUrl(nomor, 2);
+
+  const cacheBuster = useMemo(() => {
+    if (!data) return '';
+    const rawDate = data?.date_modified || data?.date_create || '';
+    return rawDate ? String(new Date(rawDate).getTime()) : String(Date.now());
+  }, [data]);
+
+  const imageUrl1WithBuster = useMemo(() => {
+    if (!imageUrl1) return null;
+    return `${imageUrl1}?t=${cacheBuster}`;
+  }, [imageUrl1, cacheBuster]);
+
+  const imageUrl2WithBuster = useMemo(() => {
+    if (!imageUrl2) return null;
+    return `${imageUrl2}?t=${cacheBuster}`;
+  }, [imageUrl2, cacheBuster]);
+
+  const showImage1 = Boolean(imageUrl1WithBuster) && !image1Error;
+  const showImage2 = Boolean(imageUrl2WithBuster) && !image2Error;
   const createdBy = useMemo(
     () => data?.user_create || data?.mh_user_create || data?.created_by || '-',
     [data],
@@ -247,6 +270,33 @@ export default function PermintaanHargaDetailScreen({
       setLoading(false);
     }
   }, [nomor, token]);
+
+  const remove = useCallback(() => {
+    setConfirmVisible(true);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    setDeleting(true);
+    try {
+      await deletePermintaanHarga(nomor, token);
+      setConfirmVisible(false);
+      Toast.show({
+        type: 'glassSuccess',
+        text1: 'Berhasil',
+        text2: 'Permintaan harga berhasil dihapus',
+      });
+      navigation.navigate('PermintaanHargaList');
+    } catch (err: any) {
+      setConfirmVisible(false);
+      Toast.show({
+        type: 'glassError',
+        text1: 'Error',
+        text2: err?.response?.data?.message || 'Gagal menghapus data',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }, [navigation, nomor, token]);
 
   useFocusEffect(
     useCallback(() => {
@@ -350,10 +400,10 @@ export default function PermintaanHargaDetailScreen({
             </Text>
 
             <Text style={styles.imageLabel}>Gambar 1</Text>
-            {showImage1 && imageUrl1 ? (
+            {showImage1 && imageUrl1WithBuster ? (
               <View style={styles.imagePreviewFrame}>
                 <Image
-                  source={{ uri: imageUrl1 }}
+                  source={{ uri: imageUrl1WithBuster }}
                   style={[
                     styles.imagePreview,
                     { aspectRatio: image1AspectRatio },
@@ -377,14 +427,14 @@ export default function PermintaanHargaDetailScreen({
               </View>
             )}
 
-            {showImage2 && imageUrl2 ? (
+            {showImage2 && imageUrl2WithBuster ? (
               <>
                 <Text style={[styles.imageLabel, styles.imageLabelSpacing]}>
                   Gambar 2
                 </Text>
                 <View style={styles.imagePreviewFrame}>
                   <Image
-                    source={{ uri: imageUrl2 }}
+                    source={{ uri: imageUrl2WithBuster }}
                     style={[
                       styles.imagePreview,
                       { aspectRatio: image2AspectRatio },
@@ -406,28 +456,77 @@ export default function PermintaanHargaDetailScreen({
         </ScrollView>
       )}
 
-      {!loading && String(data?.mh_status || '').toUpperCase() === 'MINTA' ? (
+      {!loading && String(data?.mh_status || '').toUpperCase() === 'BELUM' ? (
         <View
           style={[
             styles.bottomAction,
             { paddingBottom: Math.max(insets.bottom, 12) },
           ]}
         >
-          <TouchableOpacity
-            style={[styles.editBtn, styles.editBtnFull]}
-            onPress={() =>
-              navigation.navigate('PermintaanHargaForm', {
-                mode: 'edit',
-                nomor,
-                initialData: data,
-              })
-            }
-            activeOpacity={0.9}
-          >
-            <Text style={styles.editBtnText}>Edit</Text>
-          </TouchableOpacity>
+          <View style={styles.bottomActionRow}>
+            <TouchableOpacity
+              style={[styles.editBtn, styles.editBtnHalf]}
+              onPress={() =>
+                navigation.navigate('PermintaanHargaForm', {
+                  mode: 'edit',
+                  nomor,
+                  initialData: data,
+                })
+              }
+              activeOpacity={0.9}
+            >
+              <Text style={styles.editBtnText}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.deleteBtn, styles.editBtnHalf]}
+              onPress={remove}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.editBtnText}>Hapus</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : null}
+
+      {/* Modal konfirmasi hapus */}
+      <Modal
+        visible={confirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIndicator} />
+            <Text style={styles.modalTitle}>Konfirmasi Hapus</Text>
+            <Text style={styles.modalBody}>
+              Dokumen permintaan harga ini akan dihapus permanen.{`\n`}Lanjutkan?
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalBtnCancel}
+                onPress={() => setConfirmVisible(false)}
+                disabled={deleting}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalBtnCancelText}>Batal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtnDelete, deleting ? styles.modalBtnDisabled : null]}
+                onPress={confirmDelete}
+                disabled={deleting}
+                activeOpacity={0.85}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalBtnDeleteText}>Hapus</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -467,6 +566,19 @@ const styles = StyleSheet.create({
   editBtnFull: {
     width: '100%',
   },
+  editBtnHalf: {
+    flex: 1,
+  },
+  deleteBtn: {
+    backgroundColor: '#DC2626',
+    borderColor: '#B91C1C',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   editBtnText: {
     color: THEME.bgBottom,
     fontWeight: '900',
@@ -483,6 +595,10 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.card,
     borderTopWidth: 1,
     borderTopColor: THEME.line,
+  },
+  bottomActionRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -585,5 +701,77 @@ const styles = StyleSheet.create({
   imagePlaceholderText: {
     color: THEME.muted,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#FFF',
+    borderRadius: 22,
+    padding: 22,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: THEME.line,
+  },
+  modalIndicator: {
+    width: 44,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    marginBottom: 18,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: THEME.ink,
+    marginBottom: 10,
+  },
+  modalBody: {
+    fontSize: 13,
+    color: THEME.muted,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  modalBtnCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#EEF2F7',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: THEME.line,
+  },
+  modalBtnCancelText: {
+    color: THEME.muted,
+    fontWeight: '900',
+    fontSize: 13,
+  },
+  modalBtnDelete: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnDisabled: {
+    opacity: 0.6,
+  },
+  modalBtnDeleteText: {
+    color: '#FFF',
+    fontWeight: '900',
+    fontSize: 13,
   },
 });

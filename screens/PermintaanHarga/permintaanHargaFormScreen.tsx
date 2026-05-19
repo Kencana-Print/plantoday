@@ -19,11 +19,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/authContext';
 import {
   createPermintaanHarga,
+  deletePermintaanHargaImage,
   PermintaanHargaImageUpload,
   PermintaanHargaPayload,
   updatePermintaanHarga,
   uploadPermintaanHargaImage,
 } from '../../services/permintaanHargaApi';
+import {
+  PUBLIC_IMAGE_BASE_PATH,
+  PUBLIC_IMAGE_READ_ORIGIN,
+} from '../../services/api';
 import { usePressGuard } from '../../utils/usePressGuard';
 import { PENAWARAN_SHADOW, PENAWARAN_THEME } from '../Penawaran/penawaranTheme';
 
@@ -109,7 +114,7 @@ const sanitizeDecimalInput = (value: string) => {
 
 const editableStatus = (status?: string) => {
   const s = String(status || '').toUpperCase();
-  return !s || s === 'MINTA';
+  return !s || s === 'BELUM';
 };
 
 type PickedImage = {
@@ -191,10 +196,14 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [mh_jmlorder, setMhJmlOrder] = useState(
     String(initial?.mh_jmlorder ?? ''),
   );
-  const [mh_harga, setMhHarga] = useState(String(initial?.mh_harga ?? ''));
-  const [mh_budget, setMhBudget] = useState(String(initial?.mh_budget ?? ''));
+  const [mh_harga, setMhHarga] = useState(
+    formatThousandsId(String(initial?.mh_harga ?? '')),
+  );
+  const [mh_budget, setMhBudget] = useState(
+    formatThousandsId(String(initial?.mh_budget ?? '')),
+  );
   const [mh_dateorder, setMhDateOrder] = useState(
-    String(initial?.mh_dateorder || toYmd(new Date())),
+    String(initial?.mh_dateorder || '').trim().slice(0, 10) || toYmd(new Date()),
   );
   const [mh_kain, setMhKain] = useState(String(initial?.mh_kain || ''));
   const [mh_panjang, setMhPanjang] = useState(
@@ -212,18 +221,87 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
 
   const [image1, setImage1] = useState<FormImage | null>(null);
   const [image2, setImage2] = useState<FormImage | null>(null);
+  const [deletedSlots, setDeletedSlots] = useState<number[]>([]);
 
   useEffect(() => {
     if (mode !== 'edit') return;
 
-    const existing1 = String(initial?.gambar_1_url || '').trim();
-    const existing2 = String(initial?.gambar_2_url || '').trim();
+    const baseOrigin = String(PUBLIC_IMAGE_READ_ORIGIN || '').replace(/\/$/, '');
+    const basePath = String(PUBLIC_IMAGE_BASE_PATH || '').trim().replace(/\/$/, '');
+
+    const normalizeImageUrl = (value: string): string => {
+      const trimmed = String(value || '').trim();
+      if (!trimmed) return '';
+      const forcedReadUrl = trimmed.replace(
+        /^http:\/\/103\.94\.238\.252:8182/i,
+        baseOrigin,
+      );
+      return forcedReadUrl
+        .replace(
+          /^http:\/\/103\.94\.238\.252:3005\/image\/mintaharga/i,
+          `${baseOrigin}${basePath}`,
+        )
+        .replace(
+          /^http:\/\/103\.94\.238\.252:8182\/image\/mintaharga/i,
+          `${baseOrigin}${basePath}`,
+        );
+    };
+
+    const getSafeImageUrl = (value: any): string | null => {
+      if (typeof value !== 'string') return null;
+      const trimmed = normalizeImageUrl(value);
+      if (!trimmed) return null;
+      if (/^https?:\/\//i.test(trimmed)) return trimmed;
+      return null;
+    };
+
+    const pickImageUrl = (payload: any, index: 1 | 2): string | null => {
+      if (!payload) return null;
+      const candidates =
+        index === 1
+          ? [
+              payload?.gambar_1_url,
+              payload?.gambar1_url,
+              payload?.img1,
+              payload?.image1,
+              payload?.mh_gambar1,
+              payload?.gambar1,
+              payload?.mh_img1,
+              payload?.mh_image1,
+            ]
+          : [
+              payload?.gambar_2_url,
+              payload?.gambar2_url,
+              payload?.img2,
+              payload?.image2,
+              payload?.mh_gambar2,
+              payload?.gambar2,
+              payload?.mh_img2,
+              payload?.mh_image2,
+            ];
+
+      for (const candidate of candidates) {
+        const safeUrl = getSafeImageUrl(candidate);
+        if (safeUrl) return safeUrl;
+      }
+      return null;
+    };
+
+    const buildFallbackImageUrl = (n: string, idx: 1 | 2): string | null => {
+      const cleaned = String(n || '').trim();
+      if (!cleaned) return null;
+      const suffix = idx === 1 ? '.jpg' : '-2.jpg';
+      return `${baseOrigin}${basePath}/${encodeURIComponent(cleaned)}${suffix}`;
+    };
+
+    const resolvedUrl1 = pickImageUrl(initial, 1) || buildFallbackImageUrl(nomor, 1);
+    const resolvedUrl2 = pickImageUrl(initial, 2) || buildFallbackImageUrl(nomor, 2);
 
     setImage1(
-      existing1
+      resolvedUrl1
         ? {
             source: 'existing',
-            uri: existing1,
+            uri: resolvedUrl1,
             type: 'image/jpeg',
             fileName: String(initial?.gambar_1_file || `${nomor}.jpg`),
           }
@@ -231,10 +309,10 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     );
 
     setImage2(
-      existing2
+      resolvedUrl2
         ? {
             source: 'existing',
-            uri: existing2,
+            uri: resolvedUrl2,
             type: 'image/jpeg',
             fileName: String(initial?.gambar_2_file || `${nomor}-2.jpg`),
           }
@@ -344,15 +422,23 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const removeImageAt = (slot: 1 | 2) => {
     if (slot === 1) {
       setImage1(null);
+      if (mode === 'edit' && image1?.source === 'existing') {
+        setDeletedSlots(prev => [...prev, 1]);
+      }
     } else {
       setImage2(null);
+      if (mode === 'edit' && image2?.source === 'existing') {
+        setDeletedSlots(prev => [...prev, 2]);
+      }
     }
   };
 
   const toUploadPayload = (img: FormImage): PermintaanHargaImageUpload => ({
     uri: img.uri,
     type: img.type || 'image/jpeg',
-    name: `permintaan-harga-${Date.now()}.${(img.type || '').includes('png') ? 'png' : 'jpg'}`,
+    name: `permintaan-harga-${Date.now()}.${
+      (img.type || '').includes('png') ? 'png' : 'jpg'
+    }`,
   });
 
   const submit = async () => {
@@ -486,6 +572,27 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       hasToken: Boolean(token),
     });
     if (targetNomor) {
+      // Process deleted slots first
+      for (const slot of deletedSlots) {
+        try {
+          console.log('[permintaanHargaForm.submit] start deleting image', {
+            nomor: targetNomor,
+            slot,
+          });
+          await deletePermintaanHargaImage(targetNomor, slot, token);
+          console.log('[permintaanHargaForm.submit] delete image success', {
+            nomor: targetNomor,
+            slot,
+          });
+        } catch (err: any) {
+          console.log('[permintaanHargaForm.submit] delete image failed', {
+            nomor: targetNomor,
+            slot,
+            message: err?.message,
+          });
+        }
+      }
+
       if (image1?.source === 'new') {
         try {
           console.log('[permintaanHargaForm.submit] start upload', {
@@ -661,35 +768,41 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
               style={[styles.input, styles.rowInput]}
               value={mh_cus_nama}
               onChangeText={t => {
+                if (mode === 'edit') return;
                 setMhCusNama(toUpper(t));
                 if (mh_cus_kode) setMhCusKode('');
               }}
               placeholder="Pilih Customer"
               placeholderTextColor={THEME.muted}
+              editable={mode !== 'edit'}
             />
-            <TouchableOpacity
-              style={styles.searchButton}
-              onPress={() =>
-                runGuardedPress('permintaan-harga:search-customer', () =>
-                  navigation.navigate('CariCustomer', {
-                    from: 'PERMINTAAN_HARGA_FORM',
-                    keyword: mh_cus_nama,
-                  }),
-                )
-              }
-            >
-              <Text style={styles.btnSoftText}>Cari</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.searchButton}
-              onPress={() =>
-                runGuardedPress('permintaan-harga:add-customer', () =>
-                  navigation.navigate('TambahCustomerPermintaanHarga'),
-                )
-              }
-            >
-              <Text style={styles.btnSoftText}>Tambah</Text>
-            </TouchableOpacity>
+            {mode !== 'edit' ? (
+              <>
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  onPress={() =>
+                    runGuardedPress('permintaan-harga:search-customer', () =>
+                      navigation.navigate('CariCustomer', {
+                        from: 'PERMINTAAN_HARGA_FORM',
+                        keyword: mh_cus_nama,
+                      }),
+                    )
+                  }
+                >
+                  <Text style={styles.btnSoftText}>Cari</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  onPress={() =>
+                    runGuardedPress('permintaan-harga:add-customer', () =>
+                      navigation.navigate('TambahCustomerPermintaanHarga'),
+                    )
+                  }
+                >
+                  <Text style={styles.btnSoftText}>Tambah</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
           </View>
           {mh_cus_kode ? (
             <Text style={styles.helper}>Kode: {mh_cus_kode}</Text>
@@ -865,37 +978,50 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
             <Text style={styles.label}>
               Upload Gambar (Ukuran Maksimal 1 MB)
             </Text>
-            <TouchableOpacity style={styles.uploadBtn} onPress={pickNextImage}>
-              <Text style={styles.uploadBtnText}>Upload Gambar</Text>
-            </TouchableOpacity>
+            {(!image1 || !image2) && (
+              <TouchableOpacity style={styles.uploadBtn} onPress={pickNextImage}>
+                <Text style={styles.uploadBtnText}>+ Tambah Gambar</Text>
+              </TouchableOpacity>
+            )}
             {imageList.length > 0 ? (
               <View style={styles.previewWrap}>
                 {imageList.map(({ slot, image }) => (
                   <View style={styles.previewItem} key={`preview-${slot}`}>
-                    <Text style={styles.previewLabel}>
-                      Preview {slot}{' '}
-                      {image.source === 'existing' ? '(existing)' : '(new)'}
-                    </Text>
+                    <View style={styles.previewHeaderRow}>
+                      <Text style={styles.previewLabel}>
+                        Gambar {slot}{' '}
+                        {image.source === 'existing' ? '(server)' : '(baru)'}
+                      </Text>
+                      <View style={styles.previewActions}>
+                        <TouchableOpacity
+                          style={styles.previewReplaceBtn}
+                          onPress={() => pickImage(slot)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.previewReplaceBtnText}>Ganti</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.previewDeleteBtn}
+                          onPress={() => removeImageAt(slot)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.previewDeleteBtnText}>Hapus</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                     <View style={styles.previewImageWrap}>
                       <Image
                         source={{ uri: image.uri }}
                         style={styles.previewImage}
                         resizeMode="cover"
                       />
-                      <TouchableOpacity
-                        style={styles.previewCloseBtn}
-                        onPress={() => removeImageAt(slot)}
-                        activeOpacity={0.9}
-                      >
-                        <Text style={styles.previewCloseBtnText}>×</Text>
-                      </TouchableOpacity>
                     </View>
                     {image.source === 'new' ? (
                       <Text style={styles.helper}>
                         Ukuran: {formatSizeMb(image.fileSize)}
                       </Text>
                     ) : (
-                      <Text style={styles.helper}>Sumber: server</Text>
+                      <Text style={styles.helper}>Sumber: server (belum diganti)</Text>
                     )}
                   </View>
                 ))}
@@ -1100,6 +1226,43 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 12,
     marginBottom: 8,
+    flex: 1,
+  },
+  previewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  previewActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  previewReplaceBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(79,70,229,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.2)',
+  },
+  previewReplaceBtnText: {
+    color: THEME.primary,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  previewDeleteBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.18)',
+  },
+  previewDeleteBtnText: {
+    color: THEME.danger,
+    fontWeight: '800',
+    fontSize: 12,
   },
   previewImage: {
     width: '100%',

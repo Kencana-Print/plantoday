@@ -1,3 +1,4 @@
+/* eslint-disable react-native/no-inline-styles */
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,9 +20,9 @@ import { PENAWARAN_SHADOW, PENAWARAN_THEME } from './penawaranTheme';
 import { useAuth } from '../../context/authContext';
 import { ListSkeleton } from '../../components/loadingSkeleton';
 import {
-  getTrackingMapList,
-  TrackingMapListItem,
-} from '../../services/trackingMapApi';
+  getTrackingSpkList,
+  TrackingSpkListItem,
+} from '../../services/trackingSpkApi';
 
 const THEME = PENAWARAN_THEME;
 
@@ -58,17 +59,7 @@ const formatDate = (ymd?: string) => {
   });
 };
 
-const splitNotes = (value?: string) => {
-  const raw = String(value || '').trim();
-  if (!raw) return [] as string[];
-
-  return raw
-    .split(/\r?\n|\s*\|\s*|\s*;\s*|\s*•\s*/)
-    .map(v => v.trim())
-    .filter(Boolean);
-};
-
-export default function TrackingMapScreen() {
+export default function TrackingSpkScreen() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const initialRange = useMemo(() => getCurrentMonth(), []);
@@ -78,7 +69,7 @@ export default function TrackingMapScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [items, setItems] = useState<TrackingMapListItem[]>([]);
+  const [items, setItems] = useState<TrackingSpkListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSearchSubmitting, setIsSearchSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -100,7 +91,7 @@ export default function TrackingMapScreen() {
           return;
         }
 
-        const data = await getTrackingMapList(
+        const data = await getTrackingSpkList(
           {
             startDate,
             endDate,
@@ -113,7 +104,7 @@ export default function TrackingMapScreen() {
       } catch (err: any) {
         setItems([]);
         const message =
-          err?.response?.data?.message || 'Gagal mengambil data tracking MAP';
+          err?.response?.data?.message || 'Gagal mengambil data tracking SPK';
         setErrorMessage(message);
         setHasLoadedOnce(true);
         Toast.show({
@@ -179,12 +170,12 @@ export default function TrackingMapScreen() {
   };
 
   const renderItem = useCallback(
-    ({ item, index }: { item: TrackingMapListItem; index: number }) => {
-      const itemKey = `${item.no_map || 'map'}-${
-        item.tanggal_map || 'tgl'
+    ({ item, index }: { item: TrackingSpkListItem; index: number }) => {
+      const itemKey = `${item.spk_nomor || 'spk'}-${
+        item.spk_tanggal || 'tgl'
       }-${index}`;
       return (
-        <TrackingMapRow
+        <TrackingSpkRow
           item={item}
           isOpened={openedItemKey === itemKey}
           onToggle={() => {
@@ -197,8 +188,8 @@ export default function TrackingMapScreen() {
   );
 
   const keyExtractor = useCallback(
-    (item: TrackingMapListItem, idx: number) =>
-      `${item.no_map || 'map'}-${item.tanggal_map || 'tgl'}-${idx}`,
+    (item: TrackingSpkListItem, idx: number) =>
+      `${item.spk_nomor || 'spk'}-${item.spk_tanggal || 'tgl'}-${idx}`,
     [],
   );
 
@@ -206,7 +197,7 @@ export default function TrackingMapScreen() {
     if (isInitialLoading) {
       return (
         <View style={styles.loadingWrap}>
-          <Text style={styles.loadingSubText}>Memuat data tracking MAP...</Text>
+          <Text style={styles.loadingSubText}>Memuat data tracking SPK...</Text>
           <View style={styles.skeletonWrap}>
             <ListSkeleton rows={4} />
           </View>
@@ -232,7 +223,7 @@ export default function TrackingMapScreen() {
 
     return (
       <View style={styles.emptyWrap}>
-        <Text style={styles.emptyTitle}>Data tracking MAP tidak ditemukan</Text>
+        <Text style={styles.emptyTitle}>Data tracking SPK tidak ditemukan</Text>
         <Text style={styles.emptySubtitle}>
           Ubah rentang tanggal atau kata kunci pencarian, lalu coba lagi.
         </Text>
@@ -276,8 +267,8 @@ export default function TrackingMapScreen() {
         }
         ListHeaderComponent={
           <View style={styles.headerWrap}>
-            <Text style={styles.title}>Tracking MAP</Text>
-            <Text style={styles.subtitle}>Pantau MAP</Text>
+            <Text style={styles.title}>Tracking SPK</Text>
+            <Text style={styles.subtitle}>Pantau SPK</Text>
             <View style={styles.filterCard}>
               <View style={styles.dateRow}>
                 <TouchableOpacity
@@ -306,7 +297,7 @@ export default function TrackingMapScreen() {
                 <TextInput
                   value={search}
                   onChangeText={onChangeSearch}
-                  placeholder="Cari MAP "
+                  placeholder="Cari SPK "
                   placeholderTextColor={THEME.muted}
                   style={styles.searchInput}
                   returnKeyType="search"
@@ -391,13 +382,13 @@ export default function TrackingMapScreen() {
   );
 }
 
-const TrackingMapRow = memo(
+const TrackingSpkRow = memo(
   ({
     item,
     isOpened,
     onToggle,
   }: {
-    item: TrackingMapListItem;
+    item: TrackingSpkListItem;
     isOpened: boolean;
     onToggle: () => void;
   }) => {
@@ -407,78 +398,107 @@ const TrackingMapRow = memo(
         style={styles.rowCard}
         onPress={onToggle}
       >
-        <View style={styles.rowHeader}>
+        <View style={[styles.rowHeader, { alignItems: 'stretch' }]}>
           <View style={styles.rowLeft}>
-            <Text style={styles.rowLabel}>MAP</Text>
-            <Text style={styles.rowNo} numberOfLines={1} ellipsizeMode="clip">
-              {item.no_map || '-'}
-            </Text>
-            <Text style={styles.rowCompany} numberOfLines={2}>
-              {item.customer || '-'}
-            </Text>
-            <Text style={styles.rowSub} numberOfLines={2}>
-              {item.alamat || '-'}
-            </Text>
+            <View>
+              <Text style={styles.rowLabel}>SPK</Text>
+              <Text style={styles.rowNo} numberOfLines={1} ellipsizeMode="clip">
+                {item.spk_nomor || '-'}
+              </Text>
+              <Text style={styles.rowCompany} numberOfLines={2}>
+                {item.spk_nama || '-'}
+              </Text>
+            </View>
           </View>
           <View style={styles.rowRight}>
-            <Text style={styles.rowLabel}>Detail</Text>
-            <Text style={styles.rowActionSub}>
-              {isOpened ? 'Tap untuk tutup' : 'Tap untuk buka'}
-            </Text>
-            <Text style={styles.rowActionDateLabel}>Tanggal MAP</Text>
-            <Text style={styles.rowActionHint}>
-              {formatDate(item.tanggal_map)}
-            </Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.rowLabel}>Detail</Text>
+              <Text style={styles.rowActionSub}>
+                {isOpened ? 'Tap untuk tutup' : 'Tap untuk buka'}
+              </Text>
+            </View>
           </View>
           <View style={styles.chevronWrap}>
             <Text style={styles.chevron}>{isOpened ? '▲' : '▼'}</Text>
           </View>
         </View>
 
-        <View style={styles.statusWrap}>
-          <View style={styles.statusChip}>
-            <Text style={styles.statusLabel}>Tanggal BAST</Text>
-            <Text style={styles.statusValue}>
-              {formatDate(item.tanggal_bast)}
-            </Text>
-          </View>
-          <View style={styles.statusChip}>
-            <Text style={styles.statusLabel}>Tanggal SJ MAP</Text>
-            <Text style={styles.statusValue}>
-              {formatDate(item.tanggal_sj_map)}
-            </Text>
-          </View>
+        <View style={styles.rowMetaRow}>
+          <Text style={styles.rowActionHint}>
+            <Text style={{ color: THEME.muted }}>Tanggal SPK: </Text>
+            {formatDate(item.spk_tanggal)}
+          </Text>
+          <Text style={styles.rowSub} numberOfLines={1}>
+            Order: {item.spk_jumlah ?? '-'}
+          </Text>
         </View>
 
         {isOpened && (
           <View style={styles.dropdownBody}>
             <View style={styles.mapItemCard}>
-              <Text style={styles.dropdownText}>
-                Nama: {item.mspk_nama || '-'}
-              </Text>
-              <Text style={styles.dropdownText}>
-                Ukuran: {item.mspk_ukuran || '-'}
-              </Text>
-              <Text style={styles.dropdownText}>
-                Kain: {item.mspk_kain || '-'}
-              </Text>
-              <Text style={styles.dropdownText}>
-                Finishing: {item.mspk_finishing || '-'}
-              </Text>
-              <View style={styles.notesWrap}>
-                <Text style={styles.notesTitle}>Keterangan</Text>
-                {splitNotes(item.mspk_keterangan).length > 0 ? (
-                  splitNotes(item.mspk_keterangan).map((note, noteIndex) => (
-                    <View
-                      style={styles.noteItem}
-                      key={`${item.no_map}-note-${noteIndex}`}
-                    >
-                      <Text style={styles.noteBullet}>•</Text>
-                      <Text style={styles.noteText}>{note}</Text>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={styles.notesTitle}>Estimasi (Jadwal Kirim)</Text>
+                {item.estimasi_list?.length > 0 ? (
+                  item.estimasi_list.map((est, idx) => (
+                    <View key={idx} style={styles.detailRow}>
+                      <Text style={styles.dropdownText}>
+                        • {formatDate(est.tanggal)}
+                      </Text>
+                      <Text style={styles.dropdownTextBold}>{est.jumlah}</Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={styles.dropdownTextHint}>-</Text>
+                  <Text style={styles.dropdownText}>-</Text>
+                )}
+                {item.estimasi_list?.length > 0 && (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>Total Estimasi:</Text>
+                    <Text style={styles.totalValue}>{item.estimasi_total}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={styles.notesTitle}>Komitmen (PPIC)</Text>
+                {item.komitmen_list?.length > 0 ? (
+                  item.komitmen_list.map((kom, idx) => (
+                    <View key={idx} style={styles.detailRow}>
+                      <Text style={styles.dropdownText}>
+                        • {formatDate(kom.tanggal)}
+                      </Text>
+                      <Text style={styles.dropdownTextBold}>{kom.jumlah}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.dropdownText}>-</Text>
+                )}
+                {item.komitmen_list?.length > 0 && (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>Total Komitmen:</Text>
+                    <Text style={styles.totalValue}>{item.komitmen_total}</Text>
+                  </View>
+                )}
+              </View>
+              <View>
+                <Text style={styles.notesTitle}>Realisasi (Surat Jalan)</Text>
+                {item.realisasi_list?.length > 0 ? (
+                  item.realisasi_list.map((real, idx) => (
+                    <View key={idx} style={styles.detailRow}>
+                      <Text style={styles.dropdownText}>
+                        • {formatDate(real.tanggal)}
+                      </Text>
+                      <Text style={styles.dropdownTextBold}>{real.jumlah}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.dropdownText}>-</Text>
+                )}
+                {item.realisasi_list?.length > 0 && (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>Total Realisasi:</Text>
+                    <Text style={styles.totalValue}>
+                      {item.realisasi_total}
+                    </Text>
+                  </View>
                 )}
               </View>
             </View>
@@ -661,15 +681,21 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   rowSub: {
-    marginTop: 2,
     color: THEME.muted,
     fontWeight: '700',
     fontSize: 12,
+    textAlign: 'right',
   },
   rowRight: {
     alignItems: 'flex-end',
     justifyContent: 'center',
     minWidth: 100,
+  },
+  rowMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
   },
   rowActionSub: {
     marginTop: 3,
@@ -681,9 +707,9 @@ const styles = StyleSheet.create({
   rowActionHint: {
     marginTop: 3,
     color: THEME.primary,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
-    textAlign: 'right',
+    textAlign: 'left',
   },
   rowActionDateLabel: {
     marginTop: 4,
@@ -709,30 +735,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 12,
   },
-  statusWrap: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  statusChip: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    backgroundColor: THEME.soft,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  statusLabel: {
-    color: THEME.muted,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusValue: {
-    color: THEME.ink,
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '800',
-  },
   dropdownBody: {
     borderTopWidth: 1,
     borderTopColor: THEME.line,
@@ -748,105 +750,104 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.soft,
     marginBottom: 2,
   },
-  notesWrap: {
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    borderRadius: 8,
-    padding: 8,
-    backgroundColor: THEME.card,
-  },
   notesTitle: {
     color: THEME.ink,
     fontWeight: '900',
     marginBottom: 4,
   },
-  noteItem: {
+  detailRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 2,
-  },
-  noteBullet: {
-    color: THEME.primary,
-    fontWeight: '900',
-    marginRight: 6,
-    lineHeight: 18,
-  },
-  noteText: {
-    flex: 1,
-    color: THEME.ink,
-    fontWeight: '700',
-    lineHeight: 18,
+    justifyContent: 'space-between',
+    marginBottom: 2,
   },
   dropdownText: {
     color: THEME.ink,
+    fontSize: 13,
     fontWeight: '700',
-    marginTop: 2,
   },
-  dropdownTextHint: {
-    color: THEME.muted,
-    fontWeight: '700',
-    marginTop: 2,
-    fontSize: 12,
+  dropdownTextBold: {
+    color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '900',
   },
-  loadingWrap: { paddingVertical: 14 },
-  loadingSubText: {
-    textAlign: 'center',
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
     marginTop: 4,
-    marginBottom: 12,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: THEME.line,
+    gap: 8,
+  },
+  totalLabel: {
     color: THEME.muted,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '800',
   },
-  skeletonWrap: {
-    width: '100%',
+  totalValue: {
+    color: THEME.primary,
+    fontSize: 13,
+    fontWeight: '900',
   },
-  emptyWrap: {
-    backgroundColor: THEME.card,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    borderRadius: 14,
-    padding: 18,
+  loadingWrap: {
+    padding: 20,
     alignItems: 'center',
   },
-  emptyTitle: { color: THEME.ink, fontSize: 16, fontWeight: '700' },
+  loadingSubText: {
+    marginTop: 10,
+    color: THEME.muted,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 20,
+  },
+  skeletonWrap: { width: '100%' },
+  errorWrap: {
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: THEME.danger,
+    marginTop: 10,
+  },
+  errorSubtitle: {
+    fontSize: 14,
+    color: THEME.muted,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 20,
+  },
+  retryButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: THEME.danger,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  emptyWrap: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    color: THEME.ink,
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 16,
+    textAlign: 'center',
+  },
   emptySubtitle: {
     marginTop: 6,
     color: THEME.muted,
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 17,
-  },
-  errorWrap: {
-    backgroundColor: THEME.card,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    borderRadius: 14,
-    padding: 18,
-    alignItems: 'center',
-  },
-  errorTitle: {
-    color: THEME.ink,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  errorSubtitle: {
-    marginTop: 6,
-    color: THEME.muted,
-    textAlign: 'center',
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  retryButton: {
-    marginTop: 12,
-    backgroundColor: THEME.primary,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 12,
   },
 });

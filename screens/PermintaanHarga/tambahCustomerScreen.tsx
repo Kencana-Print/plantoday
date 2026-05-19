@@ -114,12 +114,16 @@ export default function TambahCustomerScreen({ navigation }: any) {
         text1: 'Berhasil',
         text2: `Customer ${created?.nama || payload.nama} berhasil ditambahkan`,
       });
-      navigation.navigate('PermintaanHargaForm', {
-        selectedCustomer: {
-          kode: String(created?.kode || ''),
-          nama: String(created?.nama || payload.nama),
+      navigation.navigate({
+        name: 'PermintaanHargaForm',
+        params: {
+          selectedCustomer: {
+            kode: String(created?.kode || ''),
+            nama: String(created?.nama || payload.nama),
+          },
         },
-      });
+        merge: true,
+      } as never);
     } catch (err: any) {
       Toast.show({
         type: 'glassError',

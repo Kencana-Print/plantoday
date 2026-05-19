@@ -50,8 +50,6 @@ export default function CariCustomerScreen({ navigation, route }: any) {
   const runGuardedPress = usePressGuard();
   const from = route?.params?.from || 'VISITPLAN'; // VISITPLAN / VISIT / dll
   const keywordFromPrev = route?.params?.keyword || '';
-  const draft = route?.params?.draft;
-
   const [keyword, setKeyword] = useState(String(keywordFromPrev));
   const [data, setData] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -137,7 +135,7 @@ export default function CariCustomerScreen({ navigation, route }: any) {
       if (from === 'PENAWARAN_CREATE') {
         navigation.navigate({
           name: 'PenawaranCreate',
-          params: { draft, selectedCustomer: payload },
+          params: { selectedCustomer: payload },
           merge: true,
         });
         return;

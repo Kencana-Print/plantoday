@@ -235,11 +235,6 @@ export default function TrackingPenawaranScreen({}: Props) {
 
   const onChangeSearch = useCallback((value: string) => {
     setSearch(value);
-    // Samakan UX dengan form lain: saat input dikosongkan,
-    // list langsung kembali ke mode default (tanpa filter search).
-    if (!value.trim()) {
-      setAppliedSearch('');
-    }
   }, []);
 
   useEffect(() => {
@@ -487,14 +482,12 @@ export default function TrackingPenawaranScreen({}: Props) {
                   placeholderTextColor={THEME.muted}
                   style={styles.searchInput}
                   returnKeyType="search"
-                  onSubmitEditing={applyFilter}
                 />
                 {search.trim() ? (
                   <TouchableOpacity
                     style={styles.clearSearchButton}
                     onPress={() => {
                       setSearch('');
-                      setAppliedSearch('');
                     }}
                     activeOpacity={0.8}
                   >
@@ -523,7 +516,6 @@ export default function TrackingPenawaranScreen({}: Props) {
                       style={styles.clearSearchButton}
                       onPress={() => {
                         setSalesSearch('');
-                        setAppliedSalesSearch('');
                       }}
                       activeOpacity={0.8}
                     >
@@ -551,7 +543,6 @@ export default function TrackingPenawaranScreen({}: Props) {
                       style={styles.clearSearchButton}
                       onPress={() => {
                         setCustomerSearch('');
-                        setAppliedCustomerSearch('');
                       }}
                       activeOpacity={0.8}
                     >
@@ -673,10 +664,8 @@ export default function TrackingPenawaranScreen({}: Props) {
                     onPress={() => {
                       if (pickerType === 'sales') {
                         setSalesSearch(item);
-                        setAppliedSalesSearch(item);
                       } else {
                         setCustomerSearch(item);
-                        setAppliedCustomerSearch(item);
                       }
                       setPickerVisible(false);
                     }}
