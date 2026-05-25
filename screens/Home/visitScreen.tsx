@@ -463,9 +463,20 @@ export default function VisitGabunganScreen({ navigation }: any) {
       const tglRaw = (item as any).tanggal || '-';
       const tgl = tglRaw ? formatDdMmYyyy(normalizeYmd(String(tglRaw))) : '';
 
+      const isSelected = selectedItem?.id === item.id && showEditFab;
+
       return (
         <TouchableOpacity activeOpacity={0.9} onPress={() => openEditFab(item)}>
-          <View style={styles.cardCompact}>
+          <View
+            style={[
+              styles.cardCompact,
+              isSelected && {
+                backgroundColor: '#F4F4FD',
+                borderColor: THEME.primary,
+                borderWidth: 1.5,
+              },
+            ]}
+          >
             <View style={{ flex: 1 }}>
               <Text style={styles.compactTitle} numberOfLines={1}>
                 {nama}
@@ -494,7 +505,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
         </TouchableOpacity>
       );
     },
-    [openEditFab],
+    [openEditFab, selectedItem, showEditFab],
   );
 
   const ListHeader = (
@@ -522,6 +533,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
               }}
               onClose={() => setOpenCabang(false)}
               onSelect={setSelectedCabang}
+              size="small"
             />
           </View>
 
@@ -538,6 +550,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
                 }}
                 onClose={() => setOpenSales(false)}
                 onSelect={setSelectedSales}
+                size="small"
               />
             ) : (
               <>
@@ -561,7 +574,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
               <Text style={styles.dateText}>
                 {formatDisplayDate(tanggalAwal)}
               </Text>
-              <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
+              <MaterialIcons name="edit-calendar" color={THEME.ink} size={18} />
             </TouchableOpacity>
           </View>
 
@@ -575,7 +588,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
               <Text style={styles.dateText}>
                 {formatDisplayDate(tanggalAkhir)}
               </Text>
-              <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
+              <MaterialIcons name="edit-calendar" color={THEME.ink} size={18} />
             </TouchableOpacity>
           </View>
         </View>
@@ -658,12 +671,13 @@ export default function VisitGabunganScreen({ navigation }: any) {
           style={[styles.fab, { bottom: 90 + insets.bottom }]}
         >
           <View style={styles.fabInner}>
-            <Text style={{ fontSize: 18 }}>🔍</Text>
+            <MaterialIcons name="filter-list" size={16} color={THEME.ink} />
+            <Text style={styles.fabText}>Filter</Text>
           </View>
         </TouchableOpacity>
       )}
 
-      {/* FAB Edit (✏️) muncul saat item dipilih */}
+      {/* FAB Edit muncul saat item dipilih */}
       {showEditFab && selectedItem && (
         <TouchableOpacity
           activeOpacity={0.9}
@@ -673,10 +687,11 @@ export default function VisitGabunganScreen({ navigation }: any) {
               navigation.navigate('EditVisit', { data: selectedItem });
             });
           }}
-          style={[styles.editFab, { bottom: 152 + insets.bottom }]}
+          style={[styles.editFab, { bottom: 146 + insets.bottom }]}
         >
           <View style={styles.fabInner}>
-            <MaterialIcons name="edit" size={22} color={THEME.ink} />
+            <MaterialIcons name="edit" size={14} color={THEME.ink} />
+            <Text style={styles.fabText}>Edit</Text>
           </View>
         </TouchableOpacity>
       )}
@@ -688,9 +703,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
         animationType="fade"
         onRequestClose={() => setOpenFilter(false)}
       >
-        <View
-          style={[styles.modalBackdrop, { paddingBottom: 18 + insets.bottom }]}
-        >
+        <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Filter</Text>
@@ -715,6 +728,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
                   }}
                   onClose={() => setOpenCabang(false)}
                   onSelect={setSelectedCabang}
+                  size="small"
                 />
               </View>
 
@@ -731,12 +745,13 @@ export default function VisitGabunganScreen({ navigation }: any) {
                     }}
                     onClose={() => setOpenSales(false)}
                     onSelect={setSelectedSales}
+                    size="small"
                   />
                 ) : (
                   <>
-                    <Text style={styles.label}>Sales</Text>
-                    <View style={styles.readonlyRow}>
-                      <Text style={styles.readonlyText}>{namaUser || '-'}</Text>
+                    <Text style={styles.modalLabel}>Sales</Text>
+                    <View style={styles.modalReadonlyRow}>
+                      <Text style={styles.modalReadonlyText}>{namaUser || '-'}</Text>
                     </View>
                   </>
                 )}
@@ -745,37 +760,37 @@ export default function VisitGabunganScreen({ navigation }: any) {
 
             <View style={styles.row2}>
               <View style={styles.col}>
-                <Text style={styles.label}>Tanggal Awal</Text>
+                <Text style={styles.modalLabel}>Tanggal Awal</Text>
                 <TouchableOpacity
-                  style={styles.dateSelect}
+                  style={styles.modalDateSelect}
                   onPress={() => setShowAwal(true)}
                   activeOpacity={0.9}
                 >
-                  <Text style={styles.dateText}>
+                  <Text style={styles.modalDateText}>
                     {formatDisplayDate(tanggalAwal)}
                   </Text>
                   <MaterialIcons
                     name="edit-calendar"
                     color={THEME.ink}
-                    size={22}
+                    size={18}
                   />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.col}>
-                <Text style={styles.label}>Tanggal Akhir</Text>
+                <Text style={styles.modalLabel}>Tanggal Akhir</Text>
                 <TouchableOpacity
-                  style={styles.dateSelect}
+                  style={styles.modalDateSelect}
                   onPress={() => setShowAkhir(true)}
                   activeOpacity={0.9}
                 >
-                  <Text style={styles.dateText}>
+                  <Text style={styles.modalDateText}>
                     {formatDisplayDate(tanggalAkhir)}
                   </Text>
                   <MaterialIcons
                     name="edit-calendar"
                     color={THEME.ink}
-                    size={22}
+                    size={18}
                   />
                 </TouchableOpacity>
               </View>
@@ -783,7 +798,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
 
             <View style={[styles.row2, { marginTop: 14 }]}>
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: THEME.accent }]}
+                style={[styles.modalBtnCompact, { backgroundColor: THEME.accent }]}
                 onPress={() => {
                   runGuardedPress('visit:modal-refresh', () => {
                     setOpenFilter(false);
@@ -795,11 +810,11 @@ export default function VisitGabunganScreen({ navigation }: any) {
                 }
                 activeOpacity={0.9}
               >
-                <Text style={styles.modalBtnText}>Refresh</Text>
+                <Text style={styles.modalBtnTextCompact}>Refresh</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: THEME.wa }]}
+                style={[styles.modalBtnCompact, { backgroundColor: THEME.wa }]}
                 onPress={() => {
                   runGuardedPress('visit:modal-wa', () => {
                     setOpenFilter(false);
@@ -811,7 +826,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
                 }
                 activeOpacity={0.9}
               >
-                <Text style={styles.modalBtnText}>Kirim WA</Text>
+                <Text style={styles.modalBtnTextCompact}>Kirim WA</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1002,11 +1017,11 @@ const styles = StyleSheet.create({
 
   label: {
     color: THEME.muted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     marginLeft: 4,
-    marginBottom: 6,
-    marginTop: 10,
+    marginBottom: 4,
+    marginTop: 6,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
@@ -1015,25 +1030,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.line,
-    paddingHorizontal: 12,
-    height: 55,
+    paddingHorizontal: 10,
+    height: 44,
   },
-  readonlyText: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '900' },
+  readonlyText: { flex: 1, color: THEME.ink, fontSize: 13, fontWeight: '800' },
 
   dateSelect: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.line,
-    paddingHorizontal: 12,
-    height: 55,
+    paddingHorizontal: 10,
+    height: 44,
   },
-  dateText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '900' },
+  dateText: { flex: 1, color: THEME.ink, fontSize: 13, fontWeight: '800' },
 
   empty: {
     textAlign: 'center',
@@ -1087,38 +1102,54 @@ const styles = StyleSheet.create({
   },
 
   fab: { position: 'absolute', right: 16, bottom: 90 },
-  editFab: { position: 'absolute', right: 16, bottom: 152 },
+  editFab: { position: 'absolute', right: 16, bottom: 146 },
 
   fabInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 3,
+  },
+
+  fabText: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginLeft: 6,
   },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    paddingHorizontal: 16,
-    justifyContent: 'flex-end',
-    paddingBottom: 18,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   modalCard: {
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: 'rgba(255,255,255,0.98)',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
-    padding: 14,
+    padding: 16,
+    width: '100%',
+    maxWidth: 340,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
   },
 
   modalHeader: {
@@ -1135,6 +1166,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
 
+  modalLabel: {
+    color: THEME.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    marginLeft: 4,
+    marginBottom: 4,
+    marginTop: 6,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+
+  modalReadonlyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    height: 44,
+  },
+  modalReadonlyText: {
+    flex: 1,
+    color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  modalDateSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    height: 44,
+  },
+  modalDateText: {
+    flex: 1,
+    color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
   modalBtn: {
     flex: 1,
     height: 50,
@@ -1143,6 +1219,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalBtnText: { color: '#fff', fontWeight: '900', letterSpacing: 0.3 },
+
+  modalBtnCompact: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnTextCompact: {
+    color: '#fff',
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    fontSize: 13,
+  },
 
   // === Compact card ala VisitPlan ===
   cardCompact: {

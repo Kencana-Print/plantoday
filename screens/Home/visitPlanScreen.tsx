@@ -34,6 +34,11 @@ type RekapItem = {
   catatan: string;
   label_status: string;
   realisasi?: 'Y' | 'N' | string | null;
+  tanggal?: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  foto?: string | null;
+  foto_url?: string | null;
 };
 
 type Karyawan = {
@@ -118,6 +123,16 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
 
   const normalizeYmd = (v: string) => String(v || '').slice(0, 10);
+  const isPlanSudah = (item?: RekapItem | null) => {
+    const statusLabel = String(item?.label_status || '')
+      .trim()
+      .toLowerCase();
+    const realisasiFlag = String(item?.realisasi || '')
+      .trim()
+      .toUpperCase();
+
+    return statusLabel === 'sudah' || realisasiFlag === 'Y';
+  };
 
   // ===== cabang =====
   const [selectedCabang, setSelectedCabang] = useState<string>(() => {
@@ -161,11 +176,21 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
   const [selectedItem, setSelectedItem] = useState<RekapItem | null>(null);
   const [showEditFab, setShowEditFab] = useState(false);
 
+  // ===== filter belum visit =====
+  const [onlyBelum, setOnlyBelum] = useState(false);
+
   // ===== userParam =====
   const userParam = useMemo(
     () => (isManager ? selectedSales : namaUser),
     [isManager, selectedSales, namaUser],
   );
+
+  const filteredData = useMemo(() => {
+    if (!onlyBelum) return data;
+    return data.filter(
+      item => String(item.realisasi || '').toUpperCase() !== 'Y',
+    );
+  }, [data, onlyBelum]);
 
   // Open WA
   const [openWaOption, setOpenWaOption] = useState(false);
@@ -438,6 +463,15 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
       runGuardedPress(
         'visit-plan:open-edit-fab',
         () => {
+          const normalizedStatus = String(item?.label_status || '')
+            .trim()
+            .toLowerCase();
+          if (normalizedStatus === 'sudah') {
+            setShowEditFab(false);
+            setSelectedItem(null);
+            return;
+          }
+
           setSelectedItem(item);
           setShowEditFab(true);
         },
@@ -451,10 +485,20 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
   const renderItem = useCallback(
     ({ item }: { item: RekapItem }) => {
       const done = String(item.realisasi || '').toUpperCase() === 'Y';
+      const isSelected = selectedItem?.id === item.id && showEditFab;
 
       return (
         <TouchableOpacity activeOpacity={0.9} onPress={() => openEditFab(item)}>
-          <View style={styles.cardCompact}>
+          <View
+            style={[
+              styles.cardCompact,
+              isSelected && {
+                backgroundColor: '#F4F4FD',
+                borderColor: THEME.primary,
+                borderWidth: 1.5,
+              },
+            ]}
+          >
             <View style={{ flex: 1 }}>
               <Text style={styles.compactTitle} numberOfLines={1}>
                 {item.cc_nama || '-'}
@@ -485,7 +529,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
         </TouchableOpacity>
       );
     },
-    [openEditFab],
+    [openEditFab, selectedItem, showEditFab],
   );
 
   // ===== header =====
@@ -514,6 +558,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
               }}
               onClose={() => setOpenCabang(false)}
               onSelect={setSelectedCabang}
+              size="small"
             />
           </View>
 
@@ -530,6 +575,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
                 }}
                 onClose={() => setOpenSales(false)}
                 onSelect={setSelectedSales}
+                size="small"
               />
             ) : (
               <>
@@ -553,7 +599,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
               <Text style={styles.dateText}>
                 {formatDisplayDate(tanggalAwal)}
               </Text>
-              <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
+              <MaterialIcons name="edit-calendar" color={THEME.ink} size={18} />
             </TouchableOpacity>
           </View>
 
@@ -567,7 +613,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
               <Text style={styles.dateText}>
                 {formatDisplayDate(tanggalAkhir)}
               </Text>
-              <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
+              <MaterialIcons name="edit-calendar" color={THEME.ink} size={18} />
             </TouchableOpacity>
           </View>
         </View>
@@ -597,10 +643,35 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
         />
       )}
 
-      <Text style={styles.smallHint}>
-        Menampilkan: <Text style={{ fontWeight: '900' }}>{data.length}</Text>{' '}
-        data
-      </Text>
+      <View style={styles.rowHint}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setOnlyBelum(prev => !prev)}
+          style={[
+            styles.belumFilterBtn,
+            onlyBelum && styles.belumFilterBtnActive,
+          ]}
+        >
+          <View
+            style={[
+              styles.belumCheckbox,
+              onlyBelum && styles.belumCheckboxActive,
+            ]}
+          >
+            {onlyBelum && (
+              <MaterialIcons name="check" size={10} color="#FFFFFF" />
+            )}
+          </View>
+          <Text style={[styles.belumText, onlyBelum && styles.belumTextActive]}>
+            Belum
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.smallHint}>
+          Menampilkan:{' '}
+          <Text style={{ fontWeight: '900' }}>{filteredData.length}</Text> data
+        </Text>
+      </View>
       <View style={styles.divider} />
     </View>
   );
@@ -619,7 +690,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
       />
 
       <FlatList
-        data={data}
+        data={filteredData}
         keyExtractor={item => String(item.id)}
         renderItem={renderItem}
         ListHeaderComponent={ListHeader}
@@ -640,7 +711,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
         onTouchStart={() => setShowEditFab(false)}
       />
 
-      {/* FAB Filter (🔍) */}
+      {/* FAB Filter */}
       {showFab && (
         <TouchableOpacity
           activeOpacity={0.9}
@@ -654,25 +725,68 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
           style={[styles.fab, { bottom: 90 + insets.bottom }]}
         >
           <View style={styles.fabInner}>
-            <Text style={{ fontSize: 18 }}>🔍</Text>
+            <MaterialIcons name="filter-list" size={16} color={THEME.ink} />
+            <Text style={styles.fabText}>Filter</Text>
           </View>
         </TouchableOpacity>
       )}
 
-      {/* FAB Edit (✏️) muncul saat item dipilih */}
+      {/* FAB Visit muncul saat item dipilih */}
+      {showEditFab && selectedItem && !isPlanSudah(selectedItem) && (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => {
+            runGuardedPress('visit-plan:go-visit', () => {
+              if (isPlanSudah(selectedItem)) {
+                setShowEditFab(false);
+                setSelectedItem(null);
+                return;
+              }
+
+              setShowEditFab(false);
+              const payload = {
+                kode: selectedItem.cus_kode,
+                nama: selectedItem.cc_nama,
+                tanggal: normalizeYmd(selectedItem.tanggal_plan),
+              };
+              navigation.navigate('TambahVisit', { selectedCustomer: payload });
+            });
+          }}
+          style={[styles.visitFab, { bottom: 202 + insets.bottom }]}
+        >
+          <View
+            style={[
+              styles.fabInner,
+              {
+                backgroundColor: THEME.ok,
+                borderColor: 'rgba(22,163,74,0.15)',
+              },
+            ]}
+          >
+            <MaterialIcons name="directions-run" size={16} color="#FFFFFF" />
+            <Text style={styles.fabTextWhite}>Visit</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* FAB Edit muncul saat item dipilih */}
       {showEditFab && selectedItem && (
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={() => {
             runGuardedPress('visit-plan:go-edit', () => {
               setShowEditFab(false);
-              navigation.navigate('EditVisitPlan', { data: selectedItem });
+              navigation.navigate(
+                isPlanSudah(selectedItem) ? 'EditVisit' : 'EditVisitPlan',
+                { data: selectedItem },
+              );
             });
           }}
-          style={[styles.editFab, { bottom: 152 + insets.bottom }]}
+          style={[styles.editFab, { bottom: 146 + insets.bottom }]}
         >
           <View style={styles.fabInner}>
-            <MaterialIcons name="edit" size={22} color={THEME.ink} />
+            <MaterialIcons name="edit" size={14} color={THEME.ink} />
+            <Text style={styles.fabText}>Edit</Text>
           </View>
         </TouchableOpacity>
       )}
@@ -684,9 +798,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
         animationType="fade"
         onRequestClose={() => setOpenFilter(false)}
       >
-        <View
-          style={[styles.modalBackdrop, { paddingBottom: 18 + insets.bottom }]}
-        >
+        <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Filter</Text>
@@ -711,6 +823,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
                   }}
                   onClose={() => setOpenCabang(false)}
                   onSelect={setSelectedCabang}
+                  size="small"
                 />
               </View>
 
@@ -727,12 +840,15 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
                     }}
                     onClose={() => setOpenSales(false)}
                     onSelect={setSelectedSales}
+                    size="small"
                   />
                 ) : (
                   <>
-                    <Text style={styles.label}>Sales</Text>
-                    <View style={styles.readonlyRow}>
-                      <Text style={styles.readonlyText}>{namaUser || '-'}</Text>
+                    <Text style={styles.modalLabel}>Sales</Text>
+                    <View style={styles.modalReadonlyRow}>
+                      <Text style={styles.modalReadonlyText}>
+                        {namaUser || '-'}
+                      </Text>
                     </View>
                   </>
                 )}
@@ -741,37 +857,37 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
 
             <View style={styles.row2}>
               <View style={styles.col}>
-                <Text style={styles.label}>Tanggal Awal</Text>
+                <Text style={styles.modalLabel}>Tanggal Awal</Text>
                 <TouchableOpacity
-                  style={styles.dateSelect}
+                  style={styles.modalDateSelect}
                   onPress={() => setShowAwal(true)}
                   activeOpacity={0.9}
                 >
-                  <Text style={styles.dateText}>
+                  <Text style={styles.modalDateText}>
                     {formatDisplayDate(tanggalAwal)}
                   </Text>
                   <MaterialIcons
                     name="edit-calendar"
                     color={THEME.ink}
-                    size={22}
+                    size={18}
                   />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.col}>
-                <Text style={styles.label}>Tanggal Akhir</Text>
+                <Text style={styles.modalLabel}>Tanggal Akhir</Text>
                 <TouchableOpacity
-                  style={styles.dateSelect}
+                  style={styles.modalDateSelect}
                   onPress={() => setShowAkhir(true)}
                   activeOpacity={0.9}
                 >
-                  <Text style={styles.dateText}>
+                  <Text style={styles.modalDateText}>
                     {formatDisplayDate(tanggalAkhir)}
                   </Text>
                   <MaterialIcons
                     name="edit-calendar"
                     color={THEME.ink}
-                    size={22}
+                    size={18}
                   />
                 </TouchableOpacity>
               </View>
@@ -779,7 +895,10 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
 
             <View style={[styles.row2, { marginTop: 14 }]}>
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: THEME.accent }]}
+                style={[
+                  styles.modalBtnCompact,
+                  { backgroundColor: THEME.accent },
+                ]}
                 onPress={() => {
                   runGuardedPress('visit-plan:modal-refresh', () => {
                     setOpenFilter(false);
@@ -791,11 +910,11 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
                 }
                 activeOpacity={0.9}
               >
-                <Text style={styles.modalBtnText}>Refresh</Text>
+                <Text style={styles.modalBtnTextCompact}>Refresh</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: THEME.wa }]}
+                style={[styles.modalBtnCompact, { backgroundColor: THEME.wa }]}
                 onPress={() => {
                   runGuardedPress('visit-plan:modal-wa', () => {
                     setOpenFilter(false);
@@ -807,7 +926,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
                 }
                 activeOpacity={0.9}
               >
-                <Text style={styles.modalBtnText}>Kirim WA</Text>
+                <Text style={styles.modalBtnTextCompact}>Kirim WA</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -990,20 +1109,69 @@ const styles = StyleSheet.create({
   divider: { marginTop: 10, height: 1, backgroundColor: THEME.line },
 
   smallHint: {
-    marginTop: 2,
     color: THEME.ink,
     fontSize: 12,
-    textAlign: 'right',
     fontWeight: '700',
+  },
+
+  rowHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    marginBottom: 2,
+    paddingHorizontal: 2,
+  },
+  belumFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 0.5,
+  },
+  belumFilterBtnActive: {
+    backgroundColor: '#F4F4FD',
+    borderColor: '#DEDDF9',
+  },
+  belumCheckbox: {
+    width: 14,
+    height: 14,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: THEME.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  belumCheckboxActive: {
+    borderColor: THEME.primary,
+    backgroundColor: THEME.primary,
+  },
+  belumText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: THEME.muted,
+  },
+  belumTextActive: {
+    color: THEME.primary,
   },
 
   label: {
     color: THEME.muted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     marginLeft: 4,
-    marginBottom: 6,
-    marginTop: 10,
+    marginBottom: 4,
+    marginTop: 6,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
@@ -1012,25 +1180,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.line,
-    paddingHorizontal: 12,
-    height: 55,
+    paddingHorizontal: 10,
+    height: 44,
   },
-  readonlyText: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '900' },
+  readonlyText: { flex: 1, color: THEME.ink, fontSize: 13, fontWeight: '800' },
 
   dateSelect: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.line,
-    paddingHorizontal: 12,
-    height: 55,
+    paddingHorizontal: 10,
+    height: 44,
   },
-  dateText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '900' },
+  dateText: { flex: 1, color: THEME.ink, fontSize: 13, fontWeight: '800' },
 
   cardItem: {
     backgroundColor: THEME.card,
@@ -1139,38 +1307,63 @@ const styles = StyleSheet.create({
   },
 
   fab: { position: 'absolute', right: 16, bottom: 90 },
-  editFab: { position: 'absolute', right: 16, bottom: 152 },
+  editFab: { position: 'absolute', right: 16, bottom: 146 },
+  visitFab: { position: 'absolute', right: 16, bottom: 202 },
 
   fabInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 3,
+  },
+
+  fabText: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginLeft: 6,
+  },
+
+  fabTextWhite: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginLeft: 6,
   },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    paddingHorizontal: 16,
-    justifyContent: 'flex-end',
-    paddingBottom: 18,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   modalCard: {
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: 'rgba(255,255,255,0.98)',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
-    padding: 14,
+    padding: 16,
+    width: '100%',
+    maxWidth: 340,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
   },
 
   modalHeader: {
@@ -1187,6 +1380,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
 
+  modalLabel: {
+    color: THEME.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    marginLeft: 4,
+    marginBottom: 4,
+    marginTop: 6,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+
+  modalReadonlyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    height: 44,
+  },
+  modalReadonlyText: {
+    flex: 1,
+    color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  modalDateSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    height: 44,
+  },
+  modalDateText: {
+    flex: 1,
+    color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
   modalBtn: {
     flex: 1,
     height: 50,
@@ -1195,6 +1433,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalBtnText: { color: '#fff', fontWeight: '900', letterSpacing: 0.3 },
+
+  modalBtnCompact: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnTextCompact: {
+    color: '#fff',
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    fontSize: 13,
+  },
   cardCompact: {
     backgroundColor: THEME.card,
     borderRadius: 16,

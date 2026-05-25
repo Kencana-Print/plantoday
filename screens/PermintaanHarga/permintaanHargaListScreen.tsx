@@ -12,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ScrollView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
@@ -92,6 +93,7 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showSearchFab, setShowSearchFab] = useState(false);
   const [openSearchMini, setOpenSearchMini] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const loadData = useCallback(
     async (isRefresh = false) => {
@@ -107,6 +109,7 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
             startDate,
             endDate,
             search: search.trim() || undefined,
+            status: filterStatus === 'all' ? undefined : filterStatus,
             limit: 100,
             page: 1,
           },
@@ -126,7 +129,7 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
         setRefreshing(false);
       }
     },
-    [endDate, search, startDate, token],
+    [endDate, search, startDate, token, filterStatus],
   );
 
   useFocusEffect(
@@ -294,10 +297,51 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
             </Text>
           </LinearGradient>
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.divider} />
-      <Text style={styles.tampil}>Menampilkan {items.length} data</Text>
+        <View style={styles.chipRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipScroll}
+          >
+            {(['done', 'minta', 'wait', 'belum', 'cancel'] as const).map(
+              opt => {
+                const active = filterStatus === opt;
+                const label =
+                  opt === 'done'
+                    ? '⚫ Done'
+                    : opt === 'minta'
+                    ? '🔴 Minta'
+                    : opt === 'wait'
+                    ? '🟢 Wait'
+                    : opt === 'belum'
+                    ? '⚪ Belum'
+                    : '🔵 Cancel';
+                return (
+                  <TouchableOpacity
+                    key={`status-${opt}`}
+                    style={[styles.chipItem, active && styles.chipItemActive]}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      setFilterStatus(prev => (prev === opt ? 'all' : opt))
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.chipLabel,
+                        active && styles.chipLabelActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              },
+            )}
+          </ScrollView>
+          <Text style={styles.countBadge}>{items.length}</Text>
+        </View>
+      </View>
     </View>
   );
 
@@ -318,7 +362,7 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
       />
 
       <FlatList
-        data={items}
+        data={loading ? [] : items}
         keyExtractor={(item, idx) => `${item.nomor}-${idx}`}
         ListHeaderComponent={ListHeader}
         contentContainerStyle={[
@@ -443,7 +487,8 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
           accessibilityLabel="Cari Permintaan Harga"
         >
           <View style={styles.fabSearchInner}>
-            <Text style={styles.fabSearchIcon}>🔍</Text>
+            <MaterialIcons name="search" size={16} color={THEME.ink} />
+            <Text style={styles.fabSearchText}>Cari</Text>
           </View>
         </TouchableOpacity>
       )}
@@ -631,12 +676,53 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: THEME.line,
   },
-  tampil: {
-    marginTop: 2,
-    textAlign: 'right',
-    fontSize: 12,
+  chipRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chipScroll: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  chipItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    backgroundColor: THEME.soft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipItemActive: {
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    borderColor: THEME.primary,
+  },
+  chipLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.muted,
+  },
+  chipLabelActive: {
+    color: THEME.primary,
     fontWeight: '800',
+  },
+  countBadge: {
     color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '900',
+    backgroundColor: THEME.soft,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    textAlign: 'center',
+    minWidth: 36,
   },
   loadingWrap: {
     paddingVertical: 12,
@@ -690,22 +776,27 @@ const styles = StyleSheet.create({
     right: 16,
   },
   fabSearchInner: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  fabSearchIcon: {
-    fontSize: 18,
+  fabSearchText: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginLeft: 6,
   },
   modalBackdrop: {
     flex: 1,

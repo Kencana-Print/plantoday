@@ -81,7 +81,7 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
         <TextInput
           value={keyword}
           onChangeText={setKeyword}
-          placeholder="Cari customer..."
+          placeholder="Cari nama customer..."
           placeholderTextColor={THEME.muted}
           style={styles.searchInput}
           autoCorrect={false}
@@ -312,9 +312,24 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
       const cp = item.cc_cp || '-';
       const telp = item.cc_telp || '-';
 
+      const isSelected =
+        showEditFab &&
+        selectedItem &&
+        (selectedItem.cc_kode === item.cc_kode ||
+          (selectedItem.id != null && selectedItem.id === item.id));
+
       return (
         <TouchableOpacity activeOpacity={0.9} onPress={() => openEdit(item)}>
-          <View style={styles.cardCompact}>
+          <View
+            style={[
+              styles.cardCompact,
+              isSelected && {
+                backgroundColor: '#F4F4FD',
+                borderColor: THEME.primary,
+                borderWidth: 1.5,
+              },
+            ]}
+          >
             <View style={{ flex: 1 }}>
               <Text style={styles.compactTitle} numberOfLines={1}>
                 {nama}
@@ -343,14 +358,14 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
         </TouchableOpacity>
       );
     },
-    [openEdit],
+    [openEdit, selectedItem, showEditFab],
   );
 
   const ListHeader = (
     <View style={styles.headerWrap}>
       <View style={styles.header}>
-        <Text style={styles.title}>Calon Customer</Text>
-        <Text style={styles.subtitle}>Rekap daftar calon customer</Text>
+        <Text style={styles.title}>Customer</Text>
+        <Text style={styles.subtitle}>Rekap daftar customer</Text>
       </View>
 
       {SearchBox}
@@ -407,7 +422,7 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
         onTouchStart={() => setShowEditFab(false)}
       />
 
-      {/* FAB Filter (Pencarian) */}
+      {/* FAB Filter */}
       {showFab && (
         <TouchableOpacity
           activeOpacity={0.9}
@@ -417,7 +432,8 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
           style={[styles.fab, { bottom: 90 + insets.bottom }]}
         >
           <View style={styles.fabInner}>
-            <Text style={{ fontSize: 18 }}>🔍</Text>
+            <MaterialIcons name="filter-list" size={16} color={THEME.ink} />
+            <Text style={styles.fabText}>Cari</Text>
           </View>
         </TouchableOpacity>
       )}
@@ -432,10 +448,11 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
               navigation.navigate('EditCalonCustomer', { data: selectedItem });
             });
           }}
-          style={[styles.editFab, { bottom: 152 + insets.bottom }]}
+          style={[styles.editFab, { bottom: 146 + insets.bottom }]}
         >
           <View style={styles.fabInner}>
-            <MaterialIcons name="edit" size={22} color={THEME.ink} />
+            <MaterialIcons name="edit" size={14} color={THEME.ink} />
+            <Text style={styles.fabText}>Edit</Text>
           </View>
         </TouchableOpacity>
       )}
@@ -452,7 +469,7 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
         >
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Filter</Text>
+              <Text style={styles.modalTitle}>Cari Customer</Text>
               <TouchableOpacity
                 onPress={() => setOpenFilter(false)}
                 activeOpacity={0.8}
@@ -762,22 +779,30 @@ const styles = StyleSheet.create({
   editFab: {
     position: 'absolute',
     right: 16,
-    bottom: 152,
+    bottom: 146,
   },
   fabInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 3,
+  },
+  fabText: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginLeft: 6,
   },
   modalBackdrop: {
     flex: 1,

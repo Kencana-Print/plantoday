@@ -24,6 +24,7 @@ import {
   PenawaranListItem,
 } from '../../services/penawaranApi';
 import { PENAWARAN_SHADOW, PENAWARAN_THEME } from './penawaranTheme';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 
 const THEME = PENAWARAN_THEME;
 
@@ -403,7 +404,8 @@ export default function PenawaranListScreen({ navigation }: any) {
           accessibilityLabel="Cari Penawaran"
         >
           <View style={styles.fabSearchInner}>
-            <Text style={styles.fabSearchIcon}>🔍</Text>
+            <MaterialIcons name="search" size={16} color={THEME.ink} />
+            <Text style={styles.fabSearchText}>Cari</Text>
           </View>
         </TouchableOpacity>
       )}
@@ -697,22 +699,27 @@ const styles = StyleSheet.create({
     right: 16,
   },
   fabSearchInner: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  fabSearchIcon: {
-    fontSize: 18,
+  fabSearchText: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginLeft: 6,
   },
   modalBackdrop: {
     flex: 1,

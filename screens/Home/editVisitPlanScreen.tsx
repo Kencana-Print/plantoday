@@ -125,6 +125,15 @@ export default function EditVisitPlanScreen({ route, navigation }: any) {
       return;
     }
 
+    if (fixedTanggal < today) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Validasi',
+        text2: 'Tanggal plan tidak boleh kurang dari hari ini',
+      });
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -207,7 +216,7 @@ export default function EditVisitPlanScreen({ route, navigation }: any) {
             <TouchableOpacity
               onPress={() => setShowDate(true)}
               activeOpacity={0.9}
-              style={styles.selectWrap}
+              style={[styles.selectWrap, { marginBottom: 6 }]}
             >
               <Text
                 style={[styles.selectText, !tanggal && { color: THEME.muted }]}
@@ -216,12 +225,16 @@ export default function EditVisitPlanScreen({ route, navigation }: any) {
               </Text>
               <MaterialIcons name="edit-calendar" size={22} color={THEME.ink} />
             </TouchableOpacity>
+            <Text style={styles.dateWarning}>
+              ⚠️ Rencana kunjungan untuk hari yang sama hanya dapat diubah/diinput sebelum jam 08:00 pagi.
+            </Text>
 
             {showDate && (
               <DateTimePicker
                 value={tanggal ? ymdToDate(tanggal) : new Date()}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                minimumDate={new Date()}
                 onChange={(event: any, selected?: Date) => {
                   setShowDate(false);
                   if (selected) setTanggal(dateToYmd(selected));
@@ -367,5 +380,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 10,
     marginBottom: 10,
+  },
+
+  dateWarning: {
+    color: '#D97706',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 12,
+    lineHeight: 16,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
   },
 });

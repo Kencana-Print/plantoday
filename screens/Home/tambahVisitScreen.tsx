@@ -156,6 +156,8 @@ export default function VisitScreen({ navigation, route }: any) {
   const cabang = String(user?.cabang || '');
   const namaSales = String(user?.nama || '');
 
+  const today = useMemo(() => dateToYmd(new Date()), []);
+
   const [tanggal, setTanggal] = useState<string>('');
 
   const [customer, setCustomer] = useState('');
@@ -252,6 +254,9 @@ export default function VisitScreen({ navigation, route }: any) {
       setVisitLoaded(false);
       setNote('');
       setCatatan('');
+      if (selected.tanggal) {
+        setTanggal(selected.tanggal);
+      }
     }
   }, [route?.params?.selectedCustomer]);
 
@@ -470,6 +475,15 @@ export default function VisitScreen({ navigation, route }: any) {
         type: 'glassError',
         text1: 'Validasi',
         text2: 'Tanggal Visit wajib dipilih',
+      });
+      return;
+    }
+
+    if (tanggal < today) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Validasi',
+        text2: 'Tanggal visit tidak boleh kurang dari hari ini',
       });
       return;
     }
@@ -704,6 +718,7 @@ export default function VisitScreen({ navigation, route }: any) {
                 value={tanggal ? ymdToDate(tanggal) : new Date()}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                minimumDate={new Date()}
                 onChange={(event: any, selected?: Date) => {
                   setShowDate(false);
                   if (selected) setTanggal(dateToYmd(selected));

@@ -207,6 +207,8 @@ export default function EditVisitScreen({ navigation, route }: any) {
   const cabang = String(user?.cabang || '');
   const namaSales = String(user?.nama || '');
 
+  const today = useMemo(() => dateToYmd(new Date()), []);
+
   const initialData: RekapVisitItem | undefined = route?.params?.data;
   const visitId = useMemo(
     () => Number(initialData?.id || 0) || null,
@@ -472,6 +474,15 @@ export default function EditVisitScreen({ navigation, route }: any) {
       return;
     }
 
+    if (tanggal < today) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Validasi',
+        text2: 'Tanggal visit tidak boleh kurang dari hari ini',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = {
@@ -637,6 +648,7 @@ export default function EditVisitScreen({ navigation, route }: any) {
                 value={tanggal ? ymdToDate(normalizeYmd(tanggal)) : new Date()}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                minimumDate={new Date()}
                 onChange={(event: any, selected?: Date) => {
                   setShowDate(false);
                   if (selected) setTanggal(dateToYmd(selected));

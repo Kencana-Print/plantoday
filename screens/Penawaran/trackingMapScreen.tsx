@@ -1,3 +1,4 @@
+/* eslint-disable react-native/no-inline-styles */
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
@@ -70,6 +72,19 @@ const splitNotes = (value?: string) => {
 
 export default function TrackingMapScreen() {
   const { token } = useAuth();
+  const [salesSearch, setSalesSearch] = useState('');
+  const [appliedSalesSearch, setAppliedSalesSearch] = useState('');
+  const [masterSales, setMasterSales] = useState<string[]>([]);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+
+  // Checklist filters
+  const [filterBast, setFilterBast] = useState<'all' | 'belum' | 'sudah'>(
+    'all',
+  );
+  const [filterSjMap, setFilterSjMap] = useState<'all' | 'belum' | 'sudah'>(
+    'all',
+  );
   const insets = useSafeAreaInsets();
   const initialRange = useMemo(() => getCurrentMonth(), []);
   const [startDate, setStartDate] = useState(initialRange.startDate);
@@ -100,15 +115,40 @@ export default function TrackingMapScreen() {
           return;
         }
 
-        const data = await getTrackingMapList(
+        let appliedFilterBast: string | undefined;
+        let appliedFilterSjMap: string | undefined;
+
+        if (filterBast === 'sudah' && filterSjMap === 'all') {
+          // BAST saja yang ON -> tampilkan yang BAST isi, SJMAP kosong
+          appliedFilterBast = 'sudah';
+          appliedFilterSjMap = 'belum';
+        } else if (filterSjMap === 'sudah' && filterBast === 'all') {
+          // SJMAP saja yang ON -> tampilkan yang SJMAP isi, BAST kosong
+          appliedFilterSjMap = 'sudah';
+          appliedFilterBast = 'belum';
+        } else if (filterBast === 'sudah' && filterSjMap === 'sudah') {
+          // Keduanya ON -> tampilkan yang BAST sudah & SJMAP sudah
+          appliedFilterBast = 'sudah';
+          appliedFilterSjMap = 'sudah';
+        } else {
+          // Keduanya OFF -> tampilkan semua tanpa terfilter
+          appliedFilterBast = undefined;
+          appliedFilterSjMap = undefined;
+        }
+
+        const { items: newItems, filter_options } = await getTrackingMapList(
           {
             startDate,
             endDate,
             search: appliedSearch.trim() || undefined,
+            sales: appliedSalesSearch.trim() || undefined,
+            filterBast: appliedFilterBast,
+            filterSjMap: appliedFilterSjMap,
           },
           token,
         );
-        setItems(data);
+        setItems(newItems);
+        setMasterSales(filter_options.sales);
         setHasLoadedOnce(true);
       } catch (err: any) {
         setItems([]);
@@ -127,7 +167,15 @@ export default function TrackingMapScreen() {
         setIsSearchSubmitting(false);
       }
     },
-    [appliedSearch, endDate, startDate, token],
+    [
+      appliedSearch,
+      appliedSalesSearch,
+      endDate,
+      startDate,
+      token,
+      filterBast,
+      filterSjMap,
+    ],
   );
 
   useEffect(() => {
@@ -138,19 +186,26 @@ export default function TrackingMapScreen() {
     if (isBusy) return;
     const nextSearch = search.trim();
     const currentAppliedSearch = appliedSearch.trim();
-    if (nextSearch === currentAppliedSearch) {
+    const nextSales = salesSearch.trim();
+    const currentAppliedSales = appliedSalesSearch.trim();
+
+    if (
+      nextSearch === currentAppliedSearch &&
+      nextSales === currentAppliedSales
+    ) {
       setIsSearchSubmitting(false);
       return;
     }
     setIsSearchSubmitting(true);
     setAppliedSearch(nextSearch);
-  }, [appliedSearch, isBusy, search]);
+    setAppliedSalesSearch(nextSales);
+  }, [appliedSearch, appliedSalesSearch, isBusy, search, salesSearch]);
 
   const onChangeSearch = useCallback((value: string) => {
     setSearch(value);
   }, []);
 
-  const isInitialLoading = loading && !hasLoadedOnce;
+  const showSkeleton = loading && !refreshing;
 
   const onRetry = useCallback(() => {
     if (loading || refreshing) return;
@@ -203,7 +258,7 @@ export default function TrackingMapScreen() {
   );
 
   const listEmptyComponent = useMemo(() => {
-    if (isInitialLoading) {
+    if (showSkeleton) {
       return (
         <View style={styles.loadingWrap}>
           <Text style={styles.loadingSubText}>Memuat data tracking MAP...</Text>
@@ -238,7 +293,7 @@ export default function TrackingMapScreen() {
         </Text>
       </View>
     );
-  }, [errorMessage, isInitialLoading, onRetry]);
+  }, [errorMessage, showSkeleton, onRetry]);
 
   return (
     <LinearGradient
@@ -254,7 +309,7 @@ export default function TrackingMapScreen() {
       />
 
       <FlatList
-        data={items}
+        data={showSkeleton ? [] : items}
         extraData={openedItemKey}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
@@ -277,19 +332,21 @@ export default function TrackingMapScreen() {
         ListHeaderComponent={
           <View style={styles.headerWrap}>
             <Text style={styles.title}>Tracking MAP</Text>
-            <Text style={styles.subtitle}>Pantau MAP</Text>
+
             <View style={styles.filterCard}>
+              {/* Compact date row */}
               <View style={styles.dateRow}>
                 <TouchableOpacity
                   style={styles.dateChip}
                   onPress={() => setShowStartPicker(true)}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.dateChipLabel}>Mulai</Text>
+                  <Text style={styles.dateChipLabel}>Dari</Text>
                   <Text style={styles.dateChipValue}>
                     {formatDate(startDate)}
                   </Text>
                 </TouchableOpacity>
+                <Text style={styles.dateSeparator}>—</Text>
                 <TouchableOpacity
                   style={styles.dateChip}
                   onPress={() => setShowEndPicker(true)}
@@ -302,70 +359,127 @@ export default function TrackingMapScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.searchBox}>
-                <TextInput
-                  value={search}
-                  onChangeText={onChangeSearch}
-                  placeholder="Cari MAP "
-                  placeholderTextColor={THEME.muted}
-                  style={styles.searchInput}
-                  returnKeyType="search"
-                  onSubmitEditing={applyFilter}
-                  editable={!isBusy}
-                />
-                {search.trim() ? (
-                  <TouchableOpacity
-                    style={styles.clearSearchButton}
-                    onPress={() => {
-                      setSearch('');
-                    }}
-                    activeOpacity={0.8}
-                    disabled={isBusy}
+              {/* Search + Sales inline row */}
+              <View style={styles.searchRow}>
+                <View style={styles.searchBox}>
+                  <TextInput
+                    value={search}
+                    onChangeText={onChangeSearch}
+                    placeholder="Cari MAP..."
+                    placeholderTextColor={THEME.muted}
+                    style={styles.searchInput}
+                    returnKeyType="search"
+                    onSubmitEditing={applyFilter}
+                    editable={!isBusy}
+                  />
+                  {search.trim() ? (
+                    <TouchableOpacity
+                      style={styles.clearSearchButton}
+                      onPress={() => setSearch('')}
+                      activeOpacity={0.8}
+                      disabled={isBusy}
+                    >
+                      <Text style={styles.clearSearchButtonText}>×</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={styles.searchBox}
+                  onPress={() => setPickerVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.searchInput,
+                      { textAlignVertical: 'center', lineHeight: 40 },
+                      !salesSearch && { color: THEME.muted },
+                    ]}
+                    numberOfLines={1}
                   >
-                    <Text style={styles.clearSearchButtonText}>x</Text>
-                  </TouchableOpacity>
-                ) : null}
+                    {salesSearch || 'Sales'}
+                  </Text>
+                  {salesSearch.trim() ? (
+                    <TouchableOpacity
+                      style={styles.clearSearchButton}
+                      onPress={() => setSalesSearch('')}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.clearSearchButtonText}>×</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                style={styles.filterButton}
-                activeOpacity={0.88}
-                onPress={applyFilter}
-                disabled={isBusy}
-              >
-                <LinearGradient
-                  colors={[THEME.primary, THEME.accent]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.filterButtonGradient}
+              {/* Checkbox filters + Cari button + count badge */}
+              <View style={styles.chipRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.chipItem,
+                    filterBast === 'sudah' && styles.chipItemActive,
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    setFilterBast(prev => (prev === 'sudah' ? 'all' : 'sudah'))
+                  }
                 >
-                  {isSearchSubmitting ? (
-                    <View style={styles.filterButtonLoadingWrap}>
+                  <Text
+                    style={[
+                      styles.chipLabel,
+                      filterBast === 'sudah' && styles.chipLabelActive,
+                    ]}
+                  >
+                    ✓ BAST
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.chipItem,
+                    filterSjMap === 'sudah' && styles.chipItemActive,
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    setFilterSjMap(prev => (prev === 'sudah' ? 'all' : 'sudah'))
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.chipLabel,
+                      filterSjMap === 'sudah' && styles.chipLabelActive,
+                    ]}
+                  >
+                    ✓ SJ MAP
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  activeOpacity={0.85}
+                  onPress={applyFilter}
+                  disabled={isBusy}
+                >
+                  <LinearGradient
+                    colors={[THEME.primary, THEME.accent]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.searchButtonGradient}
+                  >
+                    {isSearchSubmitting ? (
                       <ActivityIndicator size="small" color="#fff" />
-                      <Text style={styles.filterButtonText}>Memuat...</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.filterButtonText}>
-                      Lakukan Pencarian
-                    </Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+                    ) : (
+                      <Text style={styles.searchButtonText}>Cari</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+                <Text style={styles.countBadge}>{items.length}</Text>
+              </View>
 
-              {isSearchSubmitting || (loading && hasLoadedOnce) ? (
+              {/* Inline loading indicator */}
+              {(isSearchSubmitting || (loading && hasLoadedOnce)) && (
                 <View style={styles.inlineLoadingWrap}>
                   <ActivityIndicator size="small" color={THEME.primary} />
-                  <Text style={styles.inlineLoadingText}>
-                    Memuat hasil pencarian...
-                  </Text>
+                  <Text style={styles.inlineLoadingText}>Memuat...</Text>
                 </View>
-              ) : null}
+              )}
             </View>
-
-            <View style={styles.divider} />
-            <Text style={styles.summaryText}>
-              Menampilkan {items.length} data
-            </Text>
           </View>
         }
         ListEmptyComponent={listEmptyComponent}
@@ -387,6 +501,67 @@ export default function TrackingMapScreen() {
           onChange={onChangeEndDate}
         />
       )}
+
+      <Modal
+        visible={pickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setPickerVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Pilih Sales</Text>
+            <View style={styles.modalSearchWrap}>
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Cari..."
+                placeholderTextColor={THEME.muted}
+                value={pickerSearch}
+                onChangeText={setPickerSearch}
+              />
+            </View>
+            <FlatList
+              data={masterSales.filter(opt =>
+                (opt || '').toLowerCase().includes(pickerSearch.toLowerCase()),
+              )}
+              keyExtractor={(_, idx) => String(idx)}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.modalOption}
+                  onPress={() => {
+                    setSalesSearch(item);
+                    setPickerVisible(false);
+                  }}
+                >
+                  <Text style={styles.modalOptionText}>{item}</Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text
+                  style={{
+                    textAlign: 'center',
+                    marginTop: 20,
+                    color: THEME.muted,
+                  }}
+                >
+                  Data tidak ditemukan
+                </Text>
+              }
+              style={{ maxHeight: 300 }}
+            />
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setPickerVisible(false)}
+            >
+              <Text style={styles.modalCloseBtnText}>Batal</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -495,55 +670,68 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'android' ? 44 : 14,
   },
-  headerWrap: { marginBottom: 14 },
+  headerWrap: { marginBottom: 10 },
   title: {
-    fontSize: 25,
+    textAlign: 'center',
+    fontSize: 22,
     fontWeight: '900',
     color: THEME.ink,
     letterSpacing: 0.2,
-    textAlign: 'center',
-  },
-  subtitle: {
-    marginTop: 4,
-    marginBottom: 12,
-    color: THEME.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
+    marginBottom: 10,
   },
   filterCard: {
     backgroundColor: THEME.card,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: THEME.line,
-    padding: 14,
-    marginBottom: 12,
+    padding: 12,
     ...PENAWARAN_SHADOW.card,
   },
-  dateRow: { marginTop: 2, flexDirection: 'row', gap: 8 },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dateSeparator: {
+    color: THEME.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   dateChip: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 7,
     backgroundColor: THEME.soft,
   },
-  dateChipLabel: { color: THEME.muted, fontSize: 11, fontWeight: '600' },
+  dateChipLabel: {
+    color: THEME.muted,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
   dateChipValue: {
     color: THEME.ink,
-    marginTop: 2,
-    fontSize: 13,
+    marginTop: 1,
+    fontSize: 12,
     fontWeight: '800',
   },
+  searchRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchBox: {
-    marginTop: 12,
+    flex: 1,
     borderWidth: 1,
     borderColor: THEME.line,
-    borderRadius: 15,
+    borderRadius: 12,
     backgroundColor: THEME.soft,
-    height: 46,
+    height: 40,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -552,18 +740,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 0,
     color: THEME.ink,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     padding: 0,
   },
   clearSearchButton: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     borderRadius: 999,
     backgroundColor: 'rgba(100,116,139,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   clearSearchButtonText: {
     color: THEME.ink,
@@ -571,54 +759,78 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 16,
   },
-  filterButton: {
+  chipRow: {
     marginTop: 10,
-    borderRadius: 14,
-    overflow: 'hidden',
-    ...PENAWARAN_SHADOW.softCard,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  filterButtonGradient: {
-    minHeight: 44,
+  chipItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: THEME.line,
+    backgroundColor: THEME.soft,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 12,
   },
-  filterButtonText: {
+  chipItemActive: {
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    borderColor: THEME.primary,
+  },
+  chipLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.muted,
+  },
+  chipLabelActive: {
+    color: THEME.primary,
+    fontWeight: '800',
+  },
+  searchButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginLeft: 'auto',
+  },
+  searchButtonGradient: {
+    height: 34,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+  },
+  searchButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0.2,
   },
-  filterButtonLoadingWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+  countBadge: {
+    color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '900',
+    backgroundColor: THEME.soft,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    textAlign: 'center',
+    minWidth: 36,
   },
   inlineLoadingWrap: {
-    marginTop: 10,
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
   inlineLoadingText: {
     color: THEME.muted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: THEME.line,
-  },
-  summaryText: {
-    color: THEME.ink,
-    fontWeight: '800',
-    textAlign: 'right',
-    fontSize: 12,
   },
   rowCard: {
     backgroundColor: THEME.card,
@@ -848,5 +1060,122 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '800',
     fontSize: 12,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    padding: 20,
+    ...PENAWARAN_SHADOW.card,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: THEME.ink,
+    marginBottom: 12,
+  },
+  modalSearchWrap: {
+    borderWidth: 1,
+    borderColor: THEME.line,
+    borderRadius: 12,
+    marginBottom: 10,
+    backgroundColor: THEME.soft,
+  },
+  modalSearchInput: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: THEME.ink,
+  },
+  modalOption: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.line,
+  },
+  modalOptionText: {
+    fontSize: 14,
+    color: THEME.ink,
+    fontWeight: '700',
+  },
+  modalCloseBtn: {
+    marginTop: 16,
+    backgroundColor: THEME.soft,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalCloseBtnText: {
+    color: THEME.ink,
+    fontWeight: '800',
+  },
+  checklistSection: {
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: THEME.line,
+    paddingTop: 12,
+  },
+  checklistSectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginLeft: 2,
+  },
+  checklistRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  checkItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  checkItemActive: {
+    backgroundColor: 'rgba(79, 70, 229, 0.06)',
+    borderColor: 'rgba(79, 70, 229, 0.2)',
+  },
+  checkBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: THEME.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  checkBoxActive: {
+    borderColor: THEME.primary,
+    backgroundColor: THEME.primary,
+  },
+  checkMark: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  checkLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  checkLabelActive: {
+    color: THEME.primary,
+    fontWeight: '800',
   },
 });

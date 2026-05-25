@@ -594,7 +594,8 @@ export default function AchievementOmsetScreen({ navigation }: any) {
           style={[styles.fab, { bottom: 24 + insets.bottom }]}
         >
           <View style={styles.fabInner}>
-            <Text style={{ fontSize: 18 }}>🔍</Text>
+            <MaterialIcons name="filter-list" size={16} color={THEME.ink} />
+            <Text style={styles.fabText}>Filter</Text>
           </View>
         </TouchableOpacity>
       )}
@@ -903,19 +904,27 @@ const styles = StyleSheet.create({
 
   fab: { position: 'absolute', right: 16, bottom: 24 },
   fabInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 3,
+  },
+  fabText: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginLeft: 6,
   },
 
   modalBackdrop: {

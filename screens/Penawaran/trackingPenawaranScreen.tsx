@@ -449,19 +449,21 @@ export default function TrackingPenawaranScreen({}: Props) {
         ListHeaderComponent={
           <View style={styles.headerWrap}>
             <Text style={styles.title}>Tracking Penawaran</Text>
-            <Text style={styles.subtitle}>Pantau status penawaran</Text>
+
             <View style={styles.filterCard}>
+              {/* Compact date row */}
               <View style={styles.dateRow}>
                 <TouchableOpacity
                   style={styles.dateChip}
                   onPress={() => setShowStartPicker(true)}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.dateChipLabel}>Mulai</Text>
+                  <Text style={styles.dateChipLabel}>Dari</Text>
                   <Text style={styles.dateChipValue}>
                     {formatDate(startDate)}
                   </Text>
                 </TouchableOpacity>
+                <Text style={styles.dateSeparator}>—</Text>
                 <TouchableOpacity
                   style={styles.dateChip}
                   onPress={() => setShowEndPicker(true)}
@@ -474,114 +476,112 @@ export default function TrackingPenawaranScreen({}: Props) {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.searchBox}>
-                <TextInput
-                  value={search}
-                  onChangeText={onChangeSearch}
-                  placeholder="Cari no penawaran"
-                  placeholderTextColor={THEME.muted}
-                  style={styles.searchInput}
-                  returnKeyType="search"
-                />
-                {search.trim() ? (
-                  <TouchableOpacity
-                    style={styles.clearSearchButton}
-                    onPress={() => {
-                      setSearch('');
-                    }}
-                    activeOpacity={0.8}
+              {/* Search inline with Cari button */}
+              <View style={styles.searchRow}>
+                <View style={styles.searchBox}>
+                  <TextInput
+                    value={search}
+                    onChangeText={onChangeSearch}
+                    placeholder="Cari penawaran..."
+                    placeholderTextColor={THEME.muted}
+                    style={styles.searchInput}
+                    returnKeyType="search"
+                    onSubmitEditing={applyFilter}
+                  />
+                  {search.trim() ? (
+                    <TouchableOpacity
+                      style={styles.clearSearchButton}
+                      onPress={() => setSearch('')}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.clearSearchButtonText}>×</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  activeOpacity={0.85}
+                  onPress={applyFilter}
+                  disabled={loading || isSearchSubmitting}
+                >
+                  <LinearGradient
+                    colors={[THEME.primary, THEME.accent]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.searchButtonGradient}
                   >
-                    <Text style={styles.clearSearchButtonText}>x</Text>
-                  </TouchableOpacity>
-                ) : null}
+                    {isSearchSubmitting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.searchButtonText}>Cari</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              {/* Sales + Customer picker row */}
+              <View style={styles.searchRow}>
                 <TouchableOpacity
-                  style={[styles.searchBox, { flex: 1, marginTop: 0 }]}
+                  style={styles.searchBox}
                   onPress={() => openPicker('sales')}
                   activeOpacity={0.8}
                 >
                   <Text
                     style={[
                       styles.searchInput,
+                      { textAlignVertical: 'center', lineHeight: 40 },
                       !salesSearch && { color: THEME.muted },
                     ]}
                     numberOfLines={1}
                   >
-                    {salesSearch || 'Filter Sales'}
+                    {salesSearch || 'Sales'}
                   </Text>
                   {salesSearch.trim() ? (
                     <TouchableOpacity
                       style={styles.clearSearchButton}
-                      onPress={() => {
-                        setSalesSearch('');
-                      }}
+                      onPress={() => setSalesSearch('')}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.clearSearchButtonText}>x</Text>
+                      <Text style={styles.clearSearchButtonText}>×</Text>
                     </TouchableOpacity>
                   ) : null}
                 </TouchableOpacity>
-
                 <TouchableOpacity
-                  style={[styles.searchBox, { flex: 1, marginTop: 0 }]}
+                  style={styles.searchBox}
                   onPress={() => openPicker('customer')}
                   activeOpacity={0.8}
                 >
                   <Text
                     style={[
                       styles.searchInput,
+                      { textAlignVertical: 'center', lineHeight: 40 },
                       !customerSearch && { color: THEME.muted },
                     ]}
                     numberOfLines={1}
                   >
-                    {customerSearch || 'Filter Customer'}
+                    {customerSearch || 'Customer'}
                   </Text>
                   {customerSearch.trim() ? (
                     <TouchableOpacity
                       style={styles.clearSearchButton}
-                      onPress={() => {
-                        setCustomerSearch('');
-                      }}
+                      onPress={() => setCustomerSearch('')}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.clearSearchButtonText}>x</Text>
+                      <Text style={styles.clearSearchButtonText}>×</Text>
                     </TouchableOpacity>
                   ) : null}
                 </TouchableOpacity>
+                <Text style={styles.countBadge}>{items.length}</Text>
               </View>
 
-              <TouchableOpacity
-                style={styles.filterButton}
-                activeOpacity={0.88}
-                onPress={applyFilter}
-                disabled={loading || isSearchSubmitting}
-              >
-                <LinearGradient
-                  colors={[THEME.primary, THEME.accent]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.filterButtonGradient}
-                >
-                  {isSearchSubmitting ? (
-                    <View style={styles.filterButtonLoadingWrap}>
-                      <ActivityIndicator size="small" color="#fff" />
-                      <Text style={styles.filterButtonText}>Memuat...</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.filterButtonText}>
-                      Lakukan Pencarian
-                    </Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+              {/* Inline loading indicator */}
+              {isSearchSubmitting && (
+                <View style={styles.inlineLoadingWrap}>
+                  <ActivityIndicator size="small" color={THEME.primary} />
+                  <Text style={styles.inlineLoadingText}>Memuat...</Text>
+                </View>
+              )}
             </View>
-
-            <View style={styles.divider} />
-            <Text style={styles.summaryText}>
-              Menampilkan {items.length} data
-            </Text>
           </View>
         }
         ListEmptyComponent={
@@ -706,55 +706,68 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'android' ? 44 : 14,
   },
-  headerWrap: { marginBottom: 14 },
+  headerWrap: { marginBottom: 10 },
   title: {
-    fontSize: 25,
+    textAlign: 'center',
+    fontSize: 22,
     fontWeight: '900',
     color: THEME.ink,
     letterSpacing: 0.2,
-    textAlign: 'center',
-  },
-  subtitle: {
-    marginTop: 4,
-    marginBottom: 12,
-    color: THEME.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
+    marginBottom: 10,
   },
   filterCard: {
     backgroundColor: THEME.card,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: THEME.line,
-    padding: 14,
-    marginBottom: 12,
+    padding: 12,
     ...PENAWARAN_SHADOW.card,
   },
-  dateRow: { marginTop: 2, flexDirection: 'row', gap: 8 },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dateSeparator: {
+    color: THEME.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   dateChip: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 7,
     backgroundColor: THEME.soft,
   },
-  dateChipLabel: { color: THEME.muted, fontSize: 11, fontWeight: '600' },
+  dateChipLabel: {
+    color: THEME.muted,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
   dateChipValue: {
     color: THEME.ink,
-    marginTop: 2,
-    fontSize: 13,
+    marginTop: 1,
+    fontSize: 12,
     fontWeight: '800',
   },
+  searchRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchBox: {
-    marginTop: 12,
+    flex: 1,
     borderWidth: 1,
     borderColor: THEME.line,
-    borderRadius: 15,
+    borderRadius: 12,
     backgroundColor: THEME.soft,
-    height: 46,
+    height: 40,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -763,18 +776,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 0,
     color: THEME.ink,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     padding: 0,
   },
   clearSearchButton: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     borderRadius: 999,
     backgroundColor: 'rgba(100,116,139,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   clearSearchButtonText: {
     color: THEME.ink,
@@ -782,48 +795,48 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 16,
   },
-  filterButton: {
-    marginTop: 10,
-    borderRadius: 14,
+  searchButton: {
+    borderRadius: 12,
     overflow: 'hidden',
-    ...PENAWARAN_SHADOW.softCard,
   },
-  filterButtonGradient: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+  searchButtonGradient: {
+    height: 40,
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 12,
+    borderRadius: 12,
   },
-  filterButtonText: {
+  searchButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0.2,
   },
-  filterButtonLoadingWrap: {
+  countBadge: {
+    color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '900',
+    backgroundColor: THEME.soft,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    textAlign: 'center',
+    minWidth: 36,
+  },
+  inlineLoadingWrap: {
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
   },
-  divider: {
-    height: 1,
-    backgroundColor: THEME.line,
-  },
-  tableHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 2,
-  },
-  summaryText: {
-    color: THEME.ink,
-    fontWeight: '800',
-    textAlign: 'right',
-    fontSize: 12,
+  inlineLoadingText: {
+    color: THEME.muted,
+    fontSize: 11,
+    fontWeight: '700',
   },
   rowCard: {
     backgroundColor: THEME.card,

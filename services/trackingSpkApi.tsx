@@ -4,6 +4,7 @@ export type TrackingSpkListParams = {
     startDate?: string;
     endDate?: string;
     search?: string;
+    filterStatus?: string;
 };
 
 export type TrackingSpkListItem = {

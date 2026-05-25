@@ -28,7 +28,7 @@ type MenuItem = {
 
 const menus: MenuItem[] = [
   {
-    title: 'Calon Customer',
+    title: 'Customer',
     route: 'RekapCalonCustomer',
     roles: ['SALES', 'MANAGER'],
     icon: '👥',

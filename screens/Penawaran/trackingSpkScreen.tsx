@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ScrollView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
@@ -61,6 +62,9 @@ const formatDate = (ymd?: string) => {
 
 export default function TrackingSpkScreen() {
   const { token } = useAuth();
+  const [filterStatus, setFilterStatus] = useState<
+    'all' | 'belum' | 'proses' | 'sudah'
+  >('all');
   const insets = useSafeAreaInsets();
   const initialRange = useMemo(() => getCurrentMonth(), []);
   const [startDate, setStartDate] = useState(initialRange.startDate);
@@ -96,6 +100,7 @@ export default function TrackingSpkScreen() {
             startDate,
             endDate,
             search: appliedSearch.trim() || undefined,
+            filterStatus: filterStatus !== 'all' ? filterStatus : undefined,
           },
           token,
         );
@@ -118,7 +123,7 @@ export default function TrackingSpkScreen() {
         setIsSearchSubmitting(false);
       }
     },
-    [appliedSearch, endDate, startDate, token],
+    [appliedSearch, endDate, startDate, token, filterStatus],
   );
 
   useEffect(() => {
@@ -141,7 +146,7 @@ export default function TrackingSpkScreen() {
     setSearch(value);
   }, []);
 
-  const isInitialLoading = loading && !hasLoadedOnce;
+  const showSkeleton = loading && !refreshing;
 
   const onRetry = useCallback(() => {
     if (loading || refreshing) return;
@@ -194,7 +199,7 @@ export default function TrackingSpkScreen() {
   );
 
   const listEmptyComponent = useMemo(() => {
-    if (isInitialLoading) {
+    if (showSkeleton) {
       return (
         <View style={styles.loadingWrap}>
           <Text style={styles.loadingSubText}>Memuat data tracking SPK...</Text>
@@ -229,7 +234,7 @@ export default function TrackingSpkScreen() {
         </Text>
       </View>
     );
-  }, [errorMessage, isInitialLoading, onRetry]);
+  }, [errorMessage, showSkeleton, onRetry]);
 
   return (
     <LinearGradient
@@ -245,7 +250,7 @@ export default function TrackingSpkScreen() {
       />
 
       <FlatList
-        data={items}
+        data={showSkeleton ? [] : items}
         extraData={openedItemKey}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
@@ -268,19 +273,21 @@ export default function TrackingSpkScreen() {
         ListHeaderComponent={
           <View style={styles.headerWrap}>
             <Text style={styles.title}>Tracking SPK</Text>
-            <Text style={styles.subtitle}>Pantau SPK</Text>
+
             <View style={styles.filterCard}>
+              {/* Compact date row */}
               <View style={styles.dateRow}>
                 <TouchableOpacity
                   style={styles.dateChip}
                   onPress={() => setShowStartPicker(true)}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.dateChipLabel}>Mulai</Text>
+                  <Text style={styles.dateChipLabel}>Dari</Text>
                   <Text style={styles.dateChipValue}>
                     {formatDate(startDate)}
                   </Text>
                 </TouchableOpacity>
+                <Text style={styles.dateSeparator}>—</Text>
                 <TouchableOpacity
                   style={styles.dateChip}
                   onPress={() => setShowEndPicker(true)}
@@ -293,70 +300,101 @@ export default function TrackingSpkScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.searchBox}>
-                <TextInput
-                  value={search}
-                  onChangeText={onChangeSearch}
-                  placeholder="Cari SPK "
-                  placeholderTextColor={THEME.muted}
-                  style={styles.searchInput}
-                  returnKeyType="search"
-                  onSubmitEditing={applyFilter}
-                  editable={!isBusy}
-                />
-                {search.trim() ? (
-                  <TouchableOpacity
-                    style={styles.clearSearchButton}
-                    onPress={() => {
-                      setSearch('');
-                    }}
-                    activeOpacity={0.8}
-                    disabled={isBusy}
+              {/* Search inline with button */}
+              <View style={styles.searchRow}>
+                <View style={styles.searchBox}>
+                  <TextInput
+                    value={search}
+                    onChangeText={onChangeSearch}
+                    placeholder="Cari SPK..."
+                    placeholderTextColor={THEME.muted}
+                    style={styles.searchInput}
+                    returnKeyType="search"
+                    onSubmitEditing={applyFilter}
+                    editable={!isBusy}
+                  />
+                  {search.trim() ? (
+                    <TouchableOpacity
+                      style={styles.clearSearchButton}
+                      onPress={() => setSearch('')}
+                      activeOpacity={0.8}
+                      disabled={isBusy}
+                    >
+                      <Text style={styles.clearSearchButtonText}>×</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={styles.searchButton}
+                  activeOpacity={0.85}
+                  onPress={applyFilter}
+                  disabled={isBusy}
+                >
+                  <LinearGradient
+                    colors={[THEME.primary, THEME.accent]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.searchButtonGradient}
                   >
-                    <Text style={styles.clearSearchButtonText}>x</Text>
-                  </TouchableOpacity>
-                ) : null}
+                    {isSearchSubmitting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.searchButtonText}>Cari</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                style={styles.filterButton}
-                activeOpacity={0.88}
-                onPress={applyFilter}
-                disabled={isBusy}
-              >
-                <LinearGradient
-                  colors={[THEME.primary, THEME.accent]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.filterButtonGradient}
+              {/* Chip filter + count inline */}
+              <View style={styles.chipRow}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipScroll}
                 >
-                  {isSearchSubmitting ? (
-                    <View style={styles.filterButtonLoadingWrap}>
-                      <ActivityIndicator size="small" color="#fff" />
-                      <Text style={styles.filterButtonText}>Memuat...</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.filterButtonText}>
-                      Lakukan Pencarian
-                    </Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+                  {(['belum', 'proses', 'sudah'] as const).map(opt => {
+                    const active = filterStatus === opt;
+                    const label =
+                      opt === 'belum'
+                        ? '🔴 Belum'
+                        : opt === 'proses'
+                        ? '🟡 Proses'
+                        : '🟢 Sudah';
+                    return (
+                      <TouchableOpacity
+                        key={`status-${opt}`}
+                        style={[
+                          styles.chipItem,
+                          active && styles.chipItemActive,
+                        ]}
+                        activeOpacity={0.8}
+                        onPress={() =>
+                          setFilterStatus(prev => (prev === opt ? 'all' : opt))
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.chipLabel,
+                            active && styles.chipLabelActive,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <Text style={styles.countBadge}>{items.length}</Text>
+              </View>
 
-              {isSearchSubmitting || (loading && hasLoadedOnce) ? (
+              {/* Inline loading indicator */}
+              {(isSearchSubmitting || (loading && hasLoadedOnce)) && (
                 <View style={styles.inlineLoadingWrap}>
                   <ActivityIndicator size="small" color={THEME.primary} />
-                  <Text style={styles.inlineLoadingText}>
-                    Memuat hasil pencarian...
-                  </Text>
+                  <Text style={styles.inlineLoadingText}>Memuat...</Text>
                 </View>
-              ) : null}
+              )}
             </View>
-
-            <View style={styles.divider} />
-            <Text style={styles.summaryText}>
-              Menampilkan {items.length} data
-            </Text>
           </View>
         }
         ListEmptyComponent={listEmptyComponent}
@@ -392,6 +430,32 @@ const TrackingSpkRow = memo(
     isOpened: boolean;
     onToggle: () => void;
   }) => {
+    const getSpkStatus = () => {
+      const order = Number(item.spk_jumlah) || 0;
+      const realisasi = Number(item.realisasi_total) || 0;
+      if (realisasi === 0) {
+        return {
+          label: 'Belum',
+          color: '#EF4444',
+          bgColor: 'rgba(239, 68, 68, 0.08)',
+        };
+      }
+      if (realisasi >= order) {
+        return {
+          label: 'Sudah',
+          color: '#10B981',
+          bgColor: 'rgba(16, 185, 129, 0.08)',
+        };
+      }
+      return {
+        label: 'Proses',
+        color: '#F59E0B',
+        bgColor: 'rgba(245, 158, 11, 0.08)',
+      };
+    };
+
+    const statusInfo = getSpkStatus();
+
     return (
       <TouchableOpacity
         activeOpacity={0.9}
@@ -401,7 +465,37 @@ const TrackingSpkRow = memo(
         <View style={[styles.rowHeader, { alignItems: 'stretch' }]}>
           <View style={styles.rowLeft}>
             <View>
-              <Text style={styles.rowLabel}>SPK</Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <Text style={styles.rowLabel}>SPK</Text>
+                <View
+                  style={{
+                    backgroundColor: statusInfo.bgColor,
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: statusInfo.color + '22',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '800',
+                      color: statusInfo.color,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {statusInfo.label}
+                  </Text>
+                </View>
+              </View>
               <Text style={styles.rowNo} numberOfLines={1} ellipsizeMode="clip">
                 {item.spk_nomor || '-'}
               </Text>
@@ -515,55 +609,68 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'android' ? 44 : 14,
   },
-  headerWrap: { marginBottom: 14 },
+  headerWrap: { marginBottom: 10 },
   title: {
-    fontSize: 25,
+    textAlign: 'center',
+    fontSize: 22,
     fontWeight: '900',
     color: THEME.ink,
     letterSpacing: 0.2,
-    textAlign: 'center',
-  },
-  subtitle: {
-    marginTop: 4,
-    marginBottom: 12,
-    color: THEME.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
+    marginBottom: 10,
   },
   filterCard: {
     backgroundColor: THEME.card,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: THEME.line,
-    padding: 14,
-    marginBottom: 12,
+    padding: 12,
     ...PENAWARAN_SHADOW.card,
   },
-  dateRow: { marginTop: 2, flexDirection: 'row', gap: 8 },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dateSeparator: {
+    color: THEME.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   dateChip: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 7,
     backgroundColor: THEME.soft,
   },
-  dateChipLabel: { color: THEME.muted, fontSize: 11, fontWeight: '600' },
+  dateChipLabel: {
+    color: THEME.muted,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
   dateChipValue: {
     color: THEME.ink,
-    marginTop: 2,
-    fontSize: 13,
+    marginTop: 1,
+    fontSize: 12,
     fontWeight: '800',
   },
+  searchRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchBox: {
-    marginTop: 12,
+    flex: 1,
     borderWidth: 1,
     borderColor: THEME.line,
-    borderRadius: 15,
+    borderRadius: 12,
     backgroundColor: THEME.soft,
-    height: 46,
+    height: 40,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -572,18 +679,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 0,
     color: THEME.ink,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     padding: 0,
   },
   clearSearchButton: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     borderRadius: 999,
     backgroundColor: 'rgba(100,116,139,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   clearSearchButtonText: {
     color: THEME.ink,
@@ -591,54 +698,82 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 16,
   },
-  filterButton: {
-    marginTop: 10,
-    borderRadius: 14,
+  searchButton: {
+    borderRadius: 12,
     overflow: 'hidden',
-    ...PENAWARAN_SHADOW.softCard,
   },
-  filterButtonGradient: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+  searchButtonGradient: {
+    height: 40,
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 12,
+    borderRadius: 12,
   },
-  filterButtonText: {
+  searchButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0.2,
   },
-  filterButtonLoadingWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  inlineLoadingWrap: {
+  chipRow: {
     marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
+  },
+  chipScroll: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  chipItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    backgroundColor: THEME.soft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipItemActive: {
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    borderColor: THEME.primary,
+  },
+  chipLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.muted,
+  },
+  chipLabelActive: {
+    color: THEME.primary,
+    fontWeight: '800',
+  },
+  countBadge: {
+    color: THEME.ink,
+    fontSize: 13,
+    fontWeight: '900',
+    backgroundColor: THEME.soft,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    textAlign: 'center',
+    minWidth: 36,
+  },
+  inlineLoadingWrap: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   inlineLoadingText: {
     color: THEME.muted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: THEME.line,
-  },
-  summaryText: {
-    color: THEME.ink,
-    fontWeight: '800',
-    textAlign: 'right',
-    fontSize: 12,
   },
   rowCard: {
     backgroundColor: THEME.card,

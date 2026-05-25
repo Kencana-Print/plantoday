@@ -21,6 +21,7 @@ type GlassSelectProps = {
   onClose: () => void;
   onSelect: (value: string) => void;
   icon?: string;
+  size?: 'small' | 'default';
 };
 
 const THEME = {
@@ -44,23 +45,30 @@ export function GlassSelect({
   onClose,
   onSelect,
   icon,
+  size = 'default',
 }: GlassSelectProps) {
   const currentLabel = useMemo(
     () => options.find(o => o.value === value)?.label || '',
     [options, value],
   );
 
+  const isSmall = size === 'small';
+
   return (
     <>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, isSmall && styles.labelSmall]}>{label}</Text>
 
       <TouchableOpacity
         onPress={onOpen}
         activeOpacity={0.88}
-        style={styles.select}
+        style={[styles.select, isSmall && styles.selectSmall]}
       >
         <Text
-          style={[styles.selectText, !currentLabel && styles.selectPlaceholder]}
+          style={[
+            styles.selectText,
+            isSmall && styles.selectTextSmall,
+            !currentLabel && styles.selectPlaceholder,
+          ]}
           numberOfLines={1}
         >
           {currentLabel || placeholder}
@@ -133,6 +141,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
+  labelSmall: {
+    fontSize: 10,
+    marginBottom: 4,
+    marginTop: 4,
+  },
 
   select: {
     flexDirection: 'row',
@@ -146,12 +159,22 @@ const styles = StyleSheet.create({
     height: 55,
     overflow: 'hidden',
   },
+  selectSmall: {
+    borderRadius: 12,
+    marginBottom: 8,
+    height: 44,
+    paddingHorizontal: 10,
+  },
 
   selectText: {
     flex: 1,
     color: THEME.ink,
     fontSize: 16,
     fontWeight: '700',
+  },
+  selectTextSmall: {
+    fontSize: 13,
+    fontWeight: '800',
   },
   selectIcon: {
     color: THEME.muted,

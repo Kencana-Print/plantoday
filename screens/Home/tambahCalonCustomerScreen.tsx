@@ -1,302 +1,428 @@
-/* eslint-disable react-native/no-inline-styles */
+/* eslint-disable no-useless-escape */
 import React, { useMemo, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
   Text,
   TextInput,
-  ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  StatusBar,
+  View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import api from '../../services/api';
-import { useAuth } from '../../context/authContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
-import Modal from 'react-native-modal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../context/authContext';
+import { createPermintaanHargaCustomer } from '../../services/permintaanHargaApi';
 import { usePressGuard } from '../../utils/usePressGuard';
+import { PENAWARAN_SHADOW, PENAWARAN_THEME } from '../Penawaran/penawaranTheme';
 
-const THEME = {
-  primary: '#4F46E5',
-  accent: '#06B6D4',
-  ink: '#0F172A',
-  muted: '#64748B',
-  card: '#FFFFFF',
-  soft: '#F1F5F9',
-  line: 'rgba(15,23,42,0.08)',
-  danger: '#EF4444',
-  bgTop: '#F7F9FF',
-  bgBottom: '#FFFFFF',
-};
+const THEME = PENAWARAN_THEME;
 
-export default function CalonCustomerScreen({ navigation }: any) {
-  const { user } = useAuth();
+const isBasicEmail = (value: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+
+const normalizeNpwp = (value: string) =>
+  String(value || '').replace(/[^0-9.\-]/g, '');
+
+const onlyDigits = (value: string) =>
+  String(value || '').replace(/[^0-9]/g, '');
+
+export default function TambahCalonCustomerScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const runGuardedPress = usePressGuard();
-  const cabang = user?.cabang || '';
+  const { token, user } = useAuth();
 
+  const [saving, setSaving] = useState(false);
   const [nama, setNama] = useState('');
   const [alamat, setAlamat] = useState('');
-  const [telp, setTelp] = useState('');
-  const [pic, setPic] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [kota, setKota] = useState('');
+  const [cus_telp, setCusTelp] = useState('');
+  const [cus_cp, setCusCp] = useState('');
+  const [cus_email, setCusEmail] = useState('');
+  const [cus_korporasi, setCusKorporasi] = useState<'Y' | 'N'>('N');
+  const [cus_jenisusaha, setCusJenisUsaha] = useState('');
+  const [cus_npwp, setCusNpwp] = useState('');
+  const [cus_nama_npwp, setCusNamaNpwp] = useState('');
+  const [cus_alamat_npwp, setCusAlamatNpwp] = useState('');
+  const [cus_kota_npwp, setCusKotaNpwp] = useState('');
 
-  const [isSuccessModalVisible, setSuccessModalVisible] = useState(false);
-  const [savedKode, setSavedKode] = useState('');
+  const isKorporasi = useMemo(() => cus_korporasi === 'Y', [cus_korporasi]);
+  const emailIsValid = useMemo(
+    () => isBasicEmail(String(cus_email || '').trim()),
+    [cus_email],
+  );
 
-  const canSubmit = useMemo(() => {
-    return nama.trim().length > 0 && !loading;
-  }, [nama, loading]);
+  const submit = async () => {
+    const payload = {
+      nama: String(nama || '').trim(),
+      alamat: String(alamat || '').trim(),
+      kota: String(kota || '').trim(),
+      cus_telp: String(cus_telp || '').trim(),
+      cus_cp: String(cus_cp || '').trim(),
+      cus_email: String(cus_email || '').trim(),
+      user_create: String(user?.nama || '').trim(),
+      cus_korporasi,
+      cus_jenisusaha: String(cus_jenisusaha || '').trim(),
+      cus_npwp: String(cus_npwp || '').trim(),
+      cus_nama_npwp: String(cus_nama_npwp || '').trim(),
+      cus_alamat_npwp: String(cus_alamat_npwp || '').trim(),
+      cus_kota_npwp: String(cus_kota_npwp || '').trim(),
+    };
 
-  const resetForm = () => {
-    setNama('');
-    setAlamat('');
-    setTelp('');
-    setPic('');
-  };
-
-  const simpan = async () => {
-    if (loading) return;
-
-    if (!nama.trim()) {
+    if (
+      !payload.nama ||
+      !payload.alamat ||
+      !payload.kota ||
+      !payload.cus_telp ||
+      !payload.cus_cp ||
+      !payload.cus_email
+    ) {
       Toast.show({
         type: 'glassError',
         text1: 'Validasi',
-        text2: 'Nama customer wajib diisi',
+        text2:
+          'Nama, alamat, kota, no telp, contact person, dan email wajib diisi',
       });
       return;
     }
 
-    setLoading(true);
+    if (!emailIsValid) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Validasi Email',
+        text2: 'Format email tidak valid',
+      });
+      return;
+    }
+
+    if (isKorporasi && (!payload.cus_jenisusaha || !payload.cus_npwp)) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Validasi Korporasi',
+        text2: 'Jenis Usaha dan NPWP wajib diisi untuk Korporasi',
+      });
+      return;
+    }
+
+    setSaving(true);
     try {
-      const payload = {
-        nama: nama.trim(),
-        alamat: alamat.trim(),
-        cabang,
-        telp: telp.trim(),
-        pic: pic.trim(),
-      };
-
-      const res = await api.post('/calon-customer', payload);
-
-      if (!res.data?.success) {
-        Toast.show({
-          type: 'glassError',
-          text1: 'Gagal Menyimpan',
-          text2: res.data?.message || 'Gagal menyimpan data',
-        });
-        return;
-      }
-
-      setSavedKode(String(res.data?.data?.cc_kode || '-'));
-      setSuccessModalVisible(true);
+      const created = await createPermintaanHargaCustomer(payload, token);
+      Toast.show({
+        type: 'glassSuccess',
+        text1: 'Berhasil',
+        text2: `Customer ${created?.nama || payload.nama} berhasil ditambahkan`,
+      });
+      navigation.navigate('RekapCalonCustomer');
     } catch (err: any) {
       Toast.show({
         type: 'glassError',
         text1: 'Error',
-        text2: err?.response?.data?.message || 'Gagal koneksi ke server',
+        text2: err?.response?.data?.message || 'Gagal menambah customer',
       });
-    } finally {
-      setLoading(false);
+      setSaving(false);
+      return;
     }
+    setSaving(false);
   };
 
   return (
     <LinearGradient
       colors={[THEME.bgTop, THEME.bgBottom]}
-      style={styles.container}
+      style={[styles.container, { paddingTop: insets.top }]}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor="transparent"
         translucent
+        backgroundColor="transparent"
       />
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            { paddingBottom: 30 + insets.bottom },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+      <View style={styles.headerArea}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.9}
         >
-          <View style={styles.headerArea}>
+          <Text style={styles.backBtnText}>Kembali</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Tambah Customer</Text>
+        <View style={styles.headerRightSpacer} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <Text style={styles.label}>
+            Nama <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={nama}
+            onChangeText={setNama}
+            placeholder="Nama customer"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>
+            Alamat <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={[styles.input, styles.inputMulti]}
+            value={alamat}
+            onChangeText={setAlamat}
+            placeholder="Alamat"
+            placeholderTextColor={THEME.muted}
+            multiline
+          />
+
+          <Text style={styles.label}>
+            Kota <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={kota}
+            onChangeText={setKota}
+            placeholder="Kota"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>
+            No. Telp<Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={cus_telp}
+            onChangeText={t => setCusTelp(onlyDigits(t))}
+            keyboardType="phone-pad"
+            placeholder="Nomor telepon"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>
+            Contact Person <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={cus_cp}
+            onChangeText={setCusCp}
+            placeholder="Nama contact person"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>
+            Email <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={cus_email}
+            onChangeText={t =>
+              setCusEmail(
+                String(t || '')
+                  .trim()
+                  .toLowerCase(),
+              )
+            }
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="Email"
+            placeholderTextColor={THEME.muted}
+          />
+          {cus_email && !emailIsValid ? (
+            <Text style={styles.warningText}>Format email harus valid.</Text>
+          ) : null}
+
+          <Text style={styles.label}>
+            Status <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <View style={styles.row}>
             <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() =>
-                runGuardedPress('add-calon-customer:header-back', () =>
-                  navigation.navigate('RekapCalonCustomer'),
-                )
-              }
+              style={[styles.pill, !isKorporasi ? styles.pillActive : null]}
+              onPress={() => setCusKorporasi('N')}
             >
-              <Text style={styles.backBtnText}>Kembali</Text>
+              <Text
+                style={[
+                  styles.pillText,
+                  !isKorporasi ? styles.pillTextActive : null,
+                ]}
+              >
+                Perorangan
+              </Text>
             </TouchableOpacity>
-
-            {/* HERO */}
-            <View style={styles.header}>
-              <Text style={styles.title}>Calon Customer</Text>
-              <Text style={styles.subtitle}>Isi data calon customer baru</Text>
-
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{cabang || '-'}</Text>
-              </View>
-            </View>
+            <TouchableOpacity
+              style={[styles.pill, isKorporasi ? styles.pillActive : null]}
+              onPress={() => setCusKorporasi('Y')}
+            >
+              <Text
+                style={[
+                  styles.pillText,
+                  isKorporasi ? styles.pillTextActive : null,
+                ]}
+              >
+                Korporasi
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {/* FORM */}
-          <View style={styles.formCard}>
-            <Text style={styles.label}>Nama Customer</Text>
-            <View style={styles.inputContainer}>
+          {isKorporasi ? (
+            <>
+              <Text style={styles.label}>
+                Jenis Usaha <Text style={styles.requiredMark}>*</Text>
+              </Text>
               <TextInput
-                value={nama}
-                onChangeText={setNama}
-                placeholder="Nama customer"
-                placeholderTextColor={THEME.muted}
                 style={styles.input}
+                value={cus_jenisusaha}
+                onChangeText={setCusJenisUsaha}
+                placeholder="Jenis usaha"
+                placeholderTextColor={THEME.muted}
               />
-            </View>
 
-            <Text style={styles.label}>Alamat</Text>
-            <View style={[styles.inputContainer, styles.textArea]}>
+              <Text style={styles.label}>
+                NPWP <Text style={styles.requiredMark}>*</Text>
+              </Text>
               <TextInput
-                value={alamat}
-                onChangeText={setAlamat}
-                placeholder="Alamat lengkap"
+                style={styles.input}
+                value={cus_npwp}
+                onChangeText={t => setCusNpwp(normalizeNpwp(t))}
+                placeholder="NPWP"
+                placeholderTextColor={THEME.muted}
+              />
+
+              <Text style={styles.label}>Nama NPWP</Text>
+              <TextInput
+                style={styles.input}
+                value={cus_nama_npwp}
+                onChangeText={setCusNamaNpwp}
+                placeholder="Nama NPWP"
+                placeholderTextColor={THEME.muted}
+              />
+
+              <Text style={styles.label}>Alamat NPWP</Text>
+              <TextInput
+                style={[styles.input, styles.inputMulti]}
+                value={cus_alamat_npwp}
+                onChangeText={setCusAlamatNpwp}
+                placeholder="Alamat NPWP"
                 placeholderTextColor={THEME.muted}
                 multiline
-                style={[styles.input, { height: 90 }]}
               />
-            </View>
 
-            <Text style={styles.label}>Cabang</Text>
-            <View style={[styles.inputContainer, { opacity: 0.7 }]}>
-              <TextInput value={cabang} editable={false} style={styles.input} />
-            </View>
-
-            <Text style={styles.label}>No Telp</Text>
-            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Kota NPWP</Text>
               <TextInput
-                value={telp}
-                onChangeText={t => setTelp(t.replace(/[^0-9+]/g, ''))}
-                placeholder="08xxxxxxxxxx"
-                placeholderTextColor={THEME.muted}
-                keyboardType="phone-pad"
                 style={styles.input}
-              />
-            </View>
-
-            <Text style={styles.label}>Contact Person</Text>
-            <View style={styles.inputContainer}>
-              <TextInput
-                value={pic}
-                onChangeText={setPic}
-                placeholder="..."
+                value={cus_kota_npwp}
+                onChangeText={setCusKotaNpwp}
+                placeholder="Kota NPWP"
                 placeholderTextColor={THEME.muted}
-                style={styles.input}
               />
-            </View>
+            </>
+          ) : null}
 
-            <TouchableOpacity
-              onPress={simpan}
-              disabled={!canSubmit}
-              activeOpacity={0.9}
-              style={[styles.primaryBtn, !canSubmit && { opacity: 0.6 }]}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryBtnText}>Simpan</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => navigation.navigate('RekapCalonCustomer')}
-              style={styles.secondaryBtn}
-            >
-              <Text style={styles.secondaryBtnText}>Kembali</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-
-      {/* MODAL SUKSES */}
-      <Modal
-        isVisible={isSuccessModalVisible}
-        onBackdropPress={() => setSuccessModalVisible(false)}
-        backdropOpacity={0.45}
-        animationIn="zoomIn"
-        animationOut="zoomOut"
-      >
-        <View style={styles.modalCard}>
-          <View style={styles.modalIndicator} />
-          <Text style={styles.modalTitle}>Berhasil</Text>
-          <Text style={styles.modalSubtitle}>
-            Calon customer berhasil disimpan
-          </Text>
-
-          <Text style={styles.modalSubtitle}>Kode</Text>
-          <Text style={styles.modalCode}>{savedKode}</Text>
-
-          <View style={styles.modalRow}>
-            <TouchableOpacity
-              style={styles.modalBtnSoft}
-              onPress={() => {
-                setSuccessModalVisible(false);
-                resetForm();
-              }}
-            >
-              <Text style={styles.modalSoftText}>Tambah Lagi</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalBtnPrimary}
-              onPress={() => {
-                setSuccessModalVisible(false);
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'RekapCalonCustomer' }],
-                });
-              }}
-            >
-              <Text style={styles.modalPrimaryText}>Ke Home</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.submitBtn, saving ? styles.submitBtnDisabled : null]}
+            onPress={() =>
+              runGuardedPress('calon:tambah-customer', submit)
+            }
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitText}>Simpan Customer</Text>
+            )}
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </ScrollView>
     </LinearGradient>
   );
 }
 
-/* ================= STYLES ================= */
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { padding: 22, paddingBottom: 30 },
-
   headerArea: {
-    position: 'relative',
-    justifyContent: 'center',
+    marginTop: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 48,
-    marginBottom: 16,
+    justifyContent: 'space-between',
   },
-  backBtn: {
-    position: 'absolute',
-    left: 0,
-    backgroundColor: THEME.soft,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  title: {
+    color: THEME.ink,
+    fontWeight: '900',
+    fontSize: 18,
+  },
+  headerRightSpacer: { width: 88 },
+  content: { padding: 16, paddingBottom: 32 },
+  card: {
+    backgroundColor: THEME.card,
     borderWidth: 1,
     borderColor: THEME.line,
+    borderRadius: 16,
+    padding: 14,
+    ...PENAWARAN_SHADOW.softCard,
+  },
+  label: { color: THEME.muted, fontSize: 12, fontWeight: '700', marginTop: 10 },
+  requiredMark: { color: '#DC2626', fontWeight: '900' },
+  warningText: {
+    marginTop: 6,
+    color: '#B45309',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  input: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: THEME.ink,
+    backgroundColor: THEME.soft,
+    fontWeight: '600',
+  },
+  inputMulti: { minHeight: 84, textAlignVertical: 'top' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  pill: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    borderRadius: 12,
+    backgroundColor: THEME.soft,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillActive: {
+    backgroundColor: THEME.primary,
+    borderColor: THEME.primary,
+  },
+  pillText: {
+    color: THEME.ink,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  pillTextActive: {
+    color: '#fff',
+  },
+  submitBtn: {
+    marginTop: 16,
+    backgroundColor: THEME.primary,
+    borderRadius: 12,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitBtnDisabled: { opacity: 0.5 },
+  submitText: { color: '#fff', fontWeight: '800' },
+  backBtn: {
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    minWidth: 88,
+    alignItems: 'center',
   },
   backBtnText: {
     color: THEME.primary,
@@ -304,140 +430,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.2,
   },
-
-  header: { alignItems: 'center' },
-  title: {
-    fontSize: 25,
-    fontWeight: '900',
-    color: THEME.ink,
-    letterSpacing: 0.2,
-  },
-  subtitle: {
-    marginTop: 6,
-    color: THEME.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-
-  badge: {
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(79,70,229,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(79,70,229,0.2)',
-  },
-  badgeText: { color: THEME.primary, fontWeight: '900', fontSize: 12 },
-
-  searchCard: {
-    backgroundColor: THEME.card,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    marginBottom: 14,
-  },
-
-  searchRow: { flexDirection: 'row', gap: 10 },
-
-  formCard: {
-    backgroundColor: THEME.card,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: THEME.line,
-  },
-
-  label: {
-    color: THEME.muted,
-    fontSize: 12,
-    fontWeight: '800',
-    marginBottom: 6,
-    marginTop: 8,
-    marginLeft: 4,
-    textTransform: 'uppercase',
-  },
-
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: THEME.soft,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    paddingHorizontal: 12,
-    height: 54,
-    marginBottom: 10,
-  },
-  textArea: { height: 110, alignItems: 'flex-start', paddingTop: 10 },
-
-  input: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '700' },
-
-  searchBtn: {
-    backgroundColor: THEME.primary,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  searchBtnText: { color: '#fff', fontWeight: '900', fontSize: 13 },
-
-  primaryBtn: {
-    backgroundColor: THEME.primary,
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  primaryBtnText: { color: '#fff', fontWeight: '900', fontSize: 15 },
-
-  secondaryBtn: {
-    marginTop: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: THEME.muted, fontWeight: '800' },
-
-  modalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'center',
-  },
-  modalIndicator: {
-    width: 44,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#E5E7EB',
-    marginBottom: 16,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '900', color: THEME.ink },
-  modalSubtitle: { marginTop: 6, color: THEME.muted, fontSize: 13 },
-  modalCode: {
-    marginTop: 6,
-    fontSize: 16,
-    fontWeight: '900',
-    color: THEME.ink,
-  },
-
-  modalRow: { flexDirection: 'row', gap: 12, marginTop: 18 },
-
-  modalBtnSoft: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: THEME.soft,
-    alignItems: 'center',
-  },
-  modalSoftText: { color: THEME.muted, fontWeight: '900' },
-
-  modalBtnPrimary: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: THEME.primary,
-    alignItems: 'center',
-  },
-  modalPrimaryText: { color: '#fff', fontWeight: '900' },
 });
