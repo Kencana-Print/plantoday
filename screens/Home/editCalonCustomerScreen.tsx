@@ -1,37 +1,33 @@
-/* eslint-disable react-native/no-inline-styles */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
   Text,
   TextInput,
-  ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  StatusBar,
+  View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Toast from 'react-native-toast-message';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../../services/api';
+import { PENAWARAN_SHADOW, PENAWARAN_THEME } from '../Penawaran/penawaranTheme';
 
-const THEME = {
-  primary: '#4F46E5',
-  accent: '#06B6D4',
-  ink: '#0F172A',
-  muted: '#64748B',
-  card: '#FFFFFF',
-  soft: '#F1F5F9',
-  line: 'rgba(15,23,42,0.08)',
-  danger: '#EF4444',
-  bgTop: '#F7F9FF',
-  bgBottom: '#FFFFFF',
-  wa: '#22C55E',
-  ok: '#16A34A',
+const THEME = PENAWARAN_THEME;
+
+const isBasicEmail = (value: string) => {
+  const val = String(value || '').trim();
+  if (val === '-') return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
 };
+
+const normalizeNpwp = (value: string) =>
+  String(value || '').replace(/[^0-9.\\-]/g, '');
+
+const onlyDigits = (value: string) =>
+  String(value || '').replace(/[^0-9\\-]/g, '');
 
 type CalonCustomer = {
   id: number;
@@ -41,6 +37,13 @@ type CalonCustomer = {
   cc_cp?: string;
   cc_telp?: string;
   cc_kota?: string;
+  cc_email?: string;
+  cc_korporasi?: 'Y' | 'N';
+  cc_jenisusaha?: string;
+  cc_npwp?: string;
+  cc_nama_npwp?: string;
+  cc_alamat_npwp?: string;
+  cc_kota_npwp?: string;
 };
 
 export default function EditCalonCustomerScreen({ navigation, route }: any) {
@@ -59,6 +62,14 @@ export default function EditCalonCustomerScreen({ navigation, route }: any) {
   const [cp, setCp] = useState('');
   const [telp, setTelp] = useState('');
 
+  const [email, setEmail] = useState('');
+  const [korporasi, setKorporasi] = useState<'Y' | 'N'>('N');
+  const [jenisusaha, setJenisusaha] = useState('');
+  const [npwp, setNpwp] = useState('');
+  const [namaNpwp, setNamaNpwp] = useState('');
+  const [alamatNpwp, setAlamatNpwp] = useState('');
+  const [kotaNpwp, setKotaNpwp] = useState('');
+
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -68,11 +79,20 @@ export default function EditCalonCustomerScreen({ navigation, route }: any) {
     setAlamat(String(initial?.cc_alamat || ''));
     setCp(String(initial?.cc_cp || ''));
     setTelp(String(initial?.cc_telp || ''));
+    setEmail(String(initial?.cc_email || ''));
+    setKorporasi(initial?.cc_korporasi === 'Y' ? 'Y' : 'N');
+    setJenisusaha(String(initial?.cc_jenisusaha || ''));
+    setNpwp(String(initial?.cc_npwp || ''));
+    setNamaNpwp(String(initial?.cc_nama_npwp || ''));
+    setAlamatNpwp(String(initial?.cc_alamat_npwp || ''));
+    setKotaNpwp(String(initial?.cc_kota_npwp || ''));
   }, [initial]);
 
-  const canSubmit = useMemo(() => {
-    return !!cc_kode && !!nama.trim() && !loading;
-  }, [cc_kode, nama, loading]);
+  const isKorporasi = useMemo(() => korporasi === 'Y', [korporasi]);
+  const emailIsValid = useMemo(
+    () => isBasicEmail(String(email || '').trim()),
+    [email],
+  );
 
   const simpan = async () => {
     if (loading) return;
@@ -85,11 +105,38 @@ export default function EditCalonCustomerScreen({ navigation, route }: any) {
       });
       return;
     }
-    if (!nama.trim()) {
+
+    if (
+      !nama.trim() ||
+      !alamat.trim() ||
+      !kota.trim() ||
+      !telp.trim() ||
+      !cp.trim() ||
+      !email.trim()
+    ) {
       Toast.show({
         type: 'glassError',
         text1: 'Validasi',
-        text2: 'Nama customer wajib diisi',
+        text2:
+          'Nama, alamat, kota, no telp, contact person, dan email wajib diisi',
+      });
+      return;
+    }
+
+    if (!emailIsValid) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Validasi Email',
+        text2: 'Format email tidak valid',
+      });
+      return;
+    }
+
+    if (isKorporasi && (!jenisusaha.trim() || !npwp.trim())) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Validasi Korporasi',
+        text2: 'Jenis Usaha dan NPWP wajib diisi untuk Korporasi',
       });
       return;
     }
@@ -102,6 +149,13 @@ export default function EditCalonCustomerScreen({ navigation, route }: any) {
         cc_alamat: alamat.trim(),
         cc_cp: cp.trim(),
         cc_telp: telp.trim(),
+        cc_email: email.trim(),
+        cc_korporasi: korporasi,
+        cc_jenisusaha: jenisusaha.trim(),
+        cc_npwp: npwp.trim(),
+        cc_nama_npwp: namaNpwp.trim(),
+        cc_alamat_npwp: alamatNpwp.trim(),
+        cc_kota_npwp: kotaNpwp.trim(),
       };
 
       const res = await api.put(`/update-customer/${cc_kode}`, payload);
@@ -133,227 +187,317 @@ export default function EditCalonCustomerScreen({ navigation, route }: any) {
   return (
     <LinearGradient
       colors={[THEME.bgTop, THEME.bgBottom]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.container}
+      style={[styles.container, { paddingTop: insets.top }]}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor="transparent"
         translucent
+        backgroundColor="transparent"
       />
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            { paddingBottom: 28 + insets.bottom },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+      <View style={styles.headerArea}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.9}
         >
-          <View style={styles.header}>
-            <Text style={styles.title}>Calon Customer</Text>
-            <Text style={styles.subtitle}>Edit Data CS</Text>
+          <Text style={styles.backBtnText}>Kembali</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Edit Data Customer</Text>
+        <View style={styles.headerRightSpacer} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <Text style={styles.label}>Kode</Text>
+          <TextInput
+            style={[styles.input, styles.inputDisabled]}
+            value={kode}
+            editable={false}
+          />
+
+          <Text style={styles.label}>
+            Nama <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={nama}
+            onChangeText={setNama}
+            placeholder="Nama customer"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>
+            Alamat <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={[styles.input, styles.inputMulti]}
+            value={alamat}
+            onChangeText={setAlamat}
+            placeholder="Alamat"
+            placeholderTextColor={THEME.muted}
+            multiline
+          />
+
+          <Text style={styles.label}>
+            Kota <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={kota}
+            onChangeText={setKota}
+            placeholder="Kota"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>
+            No. Telp<Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={telp}
+            onChangeText={t => setTelp(onlyDigits(t))}
+            keyboardType="phone-pad"
+            placeholder="Nomor telepon"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>
+            Contact Person <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={cp}
+            onChangeText={setCp}
+            placeholder="Nama contact person"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>
+            Email <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={t =>
+              setEmail(
+                String(t || '')
+                  .trim()
+                  .toLowerCase(),
+              )
+            }
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="Email"
+            placeholderTextColor={THEME.muted}
+          />
+          {email && !emailIsValid ? (
+            <Text style={styles.warningText}>Format email harus valid.</Text>
+          ) : null}
+
+          <Text style={styles.label}>
+            Status <Text style={styles.requiredMark}>*</Text>
+          </Text>
+          <View style={styles.row}>
+            <TouchableOpacity
+              style={[styles.pill, !isKorporasi ? styles.pillActive : null]}
+              onPress={() => setKorporasi('N')}
+            >
+              <Text
+                style={[
+                  styles.pillText,
+                  !isKorporasi ? styles.pillTextActive : null,
+                ]}
+              >
+                Perorangan
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.pill, isKorporasi ? styles.pillActive : null]}
+              onPress={() => setKorporasi('Y')}
+            >
+              <Text
+                style={[
+                  styles.pillText,
+                  isKorporasi ? styles.pillTextActive : null,
+                ]}
+              >
+                Korporasi
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Kode</Text>
-            <View style={[styles.inputWrap, { opacity: 0.75 }]}>
-              <MaterialIcons
-                name="tag"
-                size={18}
-                color={THEME.muted}
-                style={{ marginRight: 10 }}
-              />
-              <TextInput value={kode} editable={false} style={styles.input} />
-            </View>
-
-            {/* Kota */}
-            <Text style={styles.label}>Kota</Text>
-            <View style={[styles.inputWrap, { opacity: 0.75 }]}>
-              <TextInput value={kota} editable={false} style={styles.input} />
-            </View>
-
-            {/* Nama */}
-            <Text style={styles.label}>Nama</Text>
-            <View style={styles.inputWrap}>
+          {isKorporasi ? (
+            <>
+              <Text style={styles.label}>
+                Jenis Usaha <Text style={styles.requiredMark}>*</Text>
+              </Text>
               <TextInput
-                value={nama}
-                onChangeText={setNama}
-                placeholder="Nama customer"
-                placeholderTextColor={THEME.muted}
                 style={styles.input}
+                value={jenisusaha}
+                onChangeText={setJenisusaha}
+                placeholder="Jenis usaha"
+                placeholderTextColor={THEME.muted}
               />
-            </View>
 
-            {/* Alamat */}
-            <Text style={styles.label}>Alamat</Text>
-            <View style={styles.textAreaWrap}>
+              <Text style={styles.label}>
+                NPWP <Text style={styles.requiredMark}>*</Text>
+              </Text>
               <TextInput
-                value={alamat}
-                onChangeText={setAlamat}
-                placeholder="Alamat"
+                style={styles.input}
+                value={npwp}
+                onChangeText={t => setNpwp(normalizeNpwp(t))}
+                placeholder="NPWP"
+                placeholderTextColor={THEME.muted}
+              />
+
+              <Text style={styles.label}>Nama NPWP</Text>
+              <TextInput
+                style={styles.input}
+                value={namaNpwp}
+                onChangeText={setNamaNpwp}
+                placeholder="Nama NPWP"
+                placeholderTextColor={THEME.muted}
+              />
+
+              <Text style={styles.label}>Alamat NPWP</Text>
+              <TextInput
+                style={[styles.input, styles.inputMulti]}
+                value={alamatNpwp}
+                onChangeText={setAlamatNpwp}
+                placeholder="Alamat NPWP"
                 placeholderTextColor={THEME.muted}
                 multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-                style={[styles.input, { height: 110, paddingTop: 10 }]}
               />
-            </View>
 
-            {/* CP */}
-            <Text style={styles.label}>Contact Person</Text>
-            <View style={styles.inputWrap}>
-              <MaterialIcons
-                name="person"
-                size={18}
-                color={THEME.muted}
-                style={{ marginRight: 10 }}
-              />
+              <Text style={styles.label}>Kota NPWP</Text>
               <TextInput
-                value={cp}
-                onChangeText={setCp}
-                placeholder="Nama CP"
-                placeholderTextColor={THEME.muted}
                 style={styles.input}
-              />
-            </View>
-
-            {/* Telepon */}
-            <Text style={styles.label}>Telepon</Text>
-            <View style={styles.inputWrap}>
-              <MaterialIcons
-                name="phone"
-                size={18}
-                color={THEME.muted}
-                style={{ marginRight: 10 }}
-              />
-              <TextInput
-                value={telp}
-                onChangeText={setTelp}
-                placeholder="No. telepon"
+                value={kotaNpwp}
+                onChangeText={setKotaNpwp}
+                placeholder="Kota NPWP"
                 placeholderTextColor={THEME.muted}
-                keyboardType="phone-pad"
-                style={styles.input}
               />
-            </View>
+            </>
+          ) : null}
 
-            <TouchableOpacity
-              onPress={simpan}
-              disabled={!canSubmit}
-              style={[styles.btnPrimary, !canSubmit && { opacity: 0.55 }]}
-              activeOpacity={0.9}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.btnPrimaryText}>UPDATE</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              disabled={loading}
-              style={styles.btnGhost}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.btnGhostText}>Batal</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <TouchableOpacity
+            style={[
+              styles.submitBtn,
+              loading ? styles.submitBtnDisabled : null,
+            ]}
+            onPress={simpan}
+            disabled={loading}
+            activeOpacity={0.9}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitText}>Simpan Perubahan</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-
-  scroll: {
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 54 : 18,
-    paddingBottom: 28,
-  },
-
-  header: { alignItems: 'center', marginBottom: 12 },
-  title: {
-    fontSize: 25,
-    fontWeight: '900',
-    color: THEME.ink,
-    letterSpacing: 0.2,
-  },
-  subtitle: {
-    color: THEME.muted,
-    fontSize: 12,
-    marginTop: 6,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-
-  card: {
-    backgroundColor: THEME.card,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: THEME.line,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
-  },
-
-  label: {
-    color: THEME.muted,
-    fontSize: 12,
-    fontWeight: '800',
-    marginLeft: 4,
-    marginBottom: 6,
-    marginTop: 10,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-
-  inputWrap: {
+  headerArea: {
+    marginTop: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: THEME.soft,
-    borderRadius: 15,
+    justifyContent: 'space-between',
+  },
+  title: {
+    color: THEME.ink,
+    fontWeight: '900',
+    fontSize: 18,
+  },
+  headerRightSpacer: { width: 88 },
+  content: { padding: 16, paddingBottom: 32 },
+  card: {
+    backgroundColor: THEME.card,
     borderWidth: 1,
     borderColor: THEME.line,
-    paddingHorizontal: 12,
-    height: 55,
-    marginBottom: 10,
+    borderRadius: 16,
+    padding: 14,
+    ...PENAWARAN_SHADOW.softCard,
   },
-
-  textAreaWrap: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: THEME.soft,
-    borderRadius: 15,
+  label: { color: THEME.muted, fontSize: 12, fontWeight: '700', marginTop: 10 },
+  requiredMark: { color: '#DC2626', fontWeight: '900' },
+  warningText: {
+    marginTop: 6,
+    color: '#B45309',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  input: {
+    marginTop: 6,
     borderWidth: 1,
     borderColor: THEME.line,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    marginBottom: 10,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: THEME.ink,
+    backgroundColor: THEME.soft,
+    fontWeight: '600',
   },
-
-  input: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '800' },
-
-  btnPrimary: {
-    marginTop: 14,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: THEME.accent,
+  inputDisabled: {
+    opacity: 0.6,
+    backgroundColor: '#E2E8F0',
+  },
+  inputMulti: { minHeight: 84, textAlignVertical: 'top' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  pill: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    borderRadius: 12,
+    backgroundColor: THEME.soft,
+    minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPrimaryText: { color: '#fff', fontWeight: '900', letterSpacing: 0.4 },
-
-  btnGhost: { marginTop: 10, alignItems: 'center', paddingVertical: 10 },
-  btnGhostText: { color: THEME.muted, fontWeight: '900' },
+  pillActive: {
+    backgroundColor: THEME.primary,
+    borderColor: THEME.primary,
+  },
+  pillText: {
+    color: THEME.ink,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  pillTextActive: {
+    color: '#fff',
+  },
+  submitBtn: {
+    marginTop: 20,
+    backgroundColor: THEME.primary,
+    borderRadius: 12,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitBtnDisabled: { opacity: 0.5 },
+  submitText: { color: '#fff', fontWeight: '800' },
+  backBtn: {
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    minWidth: 88,
+    alignItems: 'center',
+  },
+  backBtnText: {
+    color: THEME.primary,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 0.2,
+  },
 });

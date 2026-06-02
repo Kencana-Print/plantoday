@@ -20,14 +20,17 @@ import { PENAWARAN_SHADOW, PENAWARAN_THEME } from '../Penawaran/penawaranTheme';
 
 const THEME = PENAWARAN_THEME;
 
-const isBasicEmail = (value: string) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+const isBasicEmail = (value: string) => {
+  const val = String(value || '').trim();
+  if (val === '-') return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+};
 
 const normalizeNpwp = (value: string) =>
   String(value || '').replace(/[^0-9.\-]/g, '');
 
 const onlyDigits = (value: string) =>
-  String(value || '').replace(/[^0-9]/g, '');
+  String(value || '').replace(/[^0-9\-]/g, '');
 
 export default function TambahCalonCustomerScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();

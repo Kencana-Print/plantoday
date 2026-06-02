@@ -36,10 +36,8 @@ const THEME = PENAWARAN_THEME;
 
 const DIVISI_OPTIONS = [
   { kode: '1', label: '1 - SPANDUK' },
-  { kode: '3', label: '3 - KAOSAN' },
   { kode: '4', label: '4 - GARMEN' },
   { kode: '5', label: '5 - MMT' },
-  { kode: '6', label: '6 - FIT U' },
 ];
 
 const toYmd = (d: Date) => {
