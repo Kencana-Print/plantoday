@@ -22,6 +22,7 @@ DerivedData
 *.xcuserstate
 **/.xcode.env.local
 /docs
+/android/app/keystore_base64.txt
 
 # Android/IntelliJ
 #
