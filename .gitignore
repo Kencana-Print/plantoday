@@ -23,6 +23,7 @@ DerivedData
 **/.xcode.env.local
 /docs
 /android/app/keystore_base64.txt
+env.tsx
 
 # Android/IntelliJ
 #

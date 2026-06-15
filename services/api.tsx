@@ -1,9 +1,9 @@
 import axios from 'axios';
+import { API_URL, IMAGE_READ_URL, IMAGE_UPLOAD_URL } from '../env';
 
-export const PUBLIC_API_ORIGIN = 'http://103.94.238.252:3005'; //server produksi
-// export const PUBLIC_API_ORIGIN = 'http://10.0.2.2:3001'; // lokal android emulator
-export const PUBLIC_IMAGE_READ_ORIGIN = 'http://103.94.238.252:8182';
-export const PUBLIC_IMAGE_UPLOAD_ORIGIN = 'http://103.94.238.252:8080';
+export const PUBLIC_API_ORIGIN = API_URL;
+export const PUBLIC_IMAGE_READ_ORIGIN = IMAGE_READ_URL;
+export const PUBLIC_IMAGE_UPLOAD_ORIGIN = IMAGE_UPLOAD_URL;
 export const PUBLIC_IMAGE_BASE_PATH = '/images/mintaharga';
 const RELEASE_API_BASE_URL = `${PUBLIC_API_ORIGIN}/api`;
 const DEV_API_BASE_URL = `${PUBLIC_API_ORIGIN}/api`;

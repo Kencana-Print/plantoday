@@ -1,97 +1,163 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# PlanToday - Mobile Application Client
 
-# Getting Started
+PlanToday adalah aplikasi mobile berbasis **React Native (CLI)** yang digunakan untuk manajemen kunjungan sales (visit plan), pelacakan pencapaian (achievement), manajemen pengiriman kurir, pembuatan penawaran, pelacakan SPK, serta pengajuan permintaan harga.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+Aplikasi ini dibangun menggunakan **TypeScript** dan berkomunikasi dengan backend layanan REST API PlanToday.
 
-## Step 1: Start Metro
+---
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## 🚀 Fitur Utama
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+Aplikasi ini memiliki beberapa modul utama berdasarkan peran (role) pengguna:
 
-```sh
-# Using npm
+1. **Dashboard & Manajemen Kunjungan (Visit & Sales)**
+   - Rencana kunjungan harian/mingguan (Visit Plan).
+   - Penambahan dan pembaharuan data calon customer baru.
+   - Perekaman kunjungan riil di lapangan (Visit Record).
+2. **Pelacakan Pencapaian (Achievement)**
+   - Grafik visual pencapaian omset menggunakan chart interaktif (`react-native-gifted-charts`).
+   - Detail KPI target dan realisasi per sales.
+3. **Modul Pengiriman Kurir (Courier)**
+   - Rencana pengiriman, jadwal kirim, dan pelacakan proses kirim barang.
+   - Upload bukti pengiriman fisik langsung dari kamera/galeri.
+4. **Modul Penawaran Harga (Quotation)**
+   - Pembuatan draf penawaran harga.
+   - Pelacakan status persetujuan penawaran.
+   - Integrasi pencarian data perusahaan dan data sales.
+5. **Modul Permintaan Harga & SPK (Price Request)**
+   - Form permintaan harga oleh sales lengkap dengan unggah gambar produk referensi.
+   - Tracking alur pengerjaan Surat Perintah Kerja (SPK).
+
+---
+
+## 🛠️ Tech Stack & Dependensi Utama
+
+- **Core**: React Native v0.83.0, React v19.2.0, TypeScript.
+- **Navigasi**: React Navigation v7 (`@react-navigation/native-stack`).
+- **State & Autentikasi**: React Context API (`AuthProvider`).
+- **HTTP Client**: Axios dengan mekanisme interseptor deduping request (mencegah klik ganda).
+- **UI & Grafis**:
+  - `react-native-vector-icons` (Material Icons).
+  - `react-native-svg` & `react-native-gifted-charts` (visualisasi data).
+  - `react-native-linear-gradient` (desain antarmuka premium).
+- **Layanan Native**:
+  - `@react-native-async-storage/async-storage` (penyimpanan lokal).
+  - `react-native-geolocation-service` (perekaman GPS koordinat kunjungan/kurir).
+  - `react-native-image-picker` & `react-native-image-resizer` (manajemen kamera & kompresi foto).
+  - `react-native-html-to-pdf` & `react-native-share` (ekspor laporan PDF).
+
+---
+
+## 📂 Struktur Folder Proyek
+
+```
+PlanToday/
+├── android/                  # Kode native Android
+├── ios/                      # Kode native iOS
+├── components/               # Komponen UI global (loading skeleton, toast kustom)
+├── context/                  # Pengelolaan global state (autentikasi / session)
+├── navigation/               # Konfigurasi navigasi stack & pembatasan akses halaman
+├── screens/                  # Folder layar UI aplikasi dikelompokkan per modul:
+│   ├── Login/ & Register/    # Autentikasi pengguna
+│   ├── Home/                 # Halaman utama, Visit Plan, & Calon Customer
+│   ├── Achievement/          # Tampilan grafik target/realisasi omset
+│   ├── Kurir/                # Manajemen pengiriman logistik & kurir
+│   ├── Penawaran/            # Pembuatan & tracking penawaran harga
+│   └── PermintaanHarga/      # Formulir permintaan harga & detailnya
+├── services/                 # Integrasi API, manajemen update, & penyimpanan lokal
+└── utils/                    # Fungsi pembantu / utilitas umum
+```
+
+---
+
+## ⚙️ Persyaratan Sistem & Instalasi Lokal
+
+Sebelum menjalankan aplikasi, pastikan komputer Anda telah dikonfigurasi untuk pengembangan React Native:
+
+### 1. Prasyarat OS & Environment
+- **Node.js**: Versi `>= 20` (disarankan LTS).
+- **Java Development Kit (JDK)**: Versi `17` (sangat direkomendasikan **Temurin** atau **OpenJDK**).
+- **Android Studio**:
+  - Instal Android SDK Platform-34 atau terbaru.
+  - Konfigurasikan variabel lingkungan `ANDROID_HOME` di sistem Windows Anda.
+  - Siapkan Android Virtual Device (AVD) / Emulator.
+- **CocoaPods** *(Khusus macOS untuk target iOS)*:
+  - Instal bundler Ruby untuk dependensi pods.
+
+### 2. Instalasi Dependensi
+Jalankan perintah berikut di root folder proyek:
+```bash
+npm install
+```
+*Atau untuk instalasi bersih yang sesuai dengan lockfile:*
+```bash
+npm ci
+```
+
+---
+
+## 💻 Cara Menjalankan Aplikasi di Lokal
+
+### Langkah 1: Konfigurasi Endpoint API
+Buka file [services/api.tsx](file:///d:/Coding/PlanToday/services/api.tsx) dan sesuaikan konfigurasi host API:
+```typescript
+// Untuk pengembangan menggunakan emulator Android lokal, arahkan ke 10.0.2.2 atau IP komputer Anda
+export const PUBLIC_API_ORIGIN = 'http://10.0.2.2:3001'; 
+
+// Untuk mode produksi / server staging VPS
+// export const PUBLIC_API_ORIGIN = 'http://103.94.238.252:3005'; 
+```
+
+### Langkah 2: Jalankan Metro Bundler
+Jalankan Metro bundler di terminal terpisah untuk memproses bundel JavaScript:
+```bash
 npm start
-
-# OR using Yarn
-yarn start
 ```
 
-## Step 2: Build and run your app
+### Langkah 3: Jalankan Aplikasi pada Perangkat/Emulator
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
+#### **Target Android**
+Pastikan emulator Android Anda sudah menyala atau perangkat fisik Android sudah terhubung melalui `adb debug`. Jalankan perintah berikut:
+```bash
 npm run android
-
-# OR using Yarn
-yarn android
 ```
 
-### iOS
+#### **Target iOS** *(Hanya di macOS)*
+1. Instal CocoaPods terlebih dahulu:
+   ```bash
+   cd ios
+   bundle install
+   bundle exec pod install
+   cd ..
+   ```
+2. Jalankan aplikasi di simulator iOS:
+   ```bash
+   npm run ios
+   ```
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+---
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+## 🏗️ Alur Pembagian API Client (Axios Interceptors)
 
-```sh
-bundle install
-```
+Aplikasi ini menggunakan Axios Client kustom di [services/api.tsx](file:///d:/Coding/PlanToday/services/api.tsx) dengan fitur **Request Deduplication** otomatis.
+Mekanisme ini mencegah pengiriman request mutasi ganda (`POST`, `PUT`, `PATCH`, `DELETE`) secara tidak sengaja ketika user melakukan double-click secara cepat pada tombol submit.
+- Jika request mutasi yang sama persis sedang berjalan (dalam status *in-flight*), request berikutnya akan dibatalkan dengan pesan error `'Permintaan sedang diproses. Mohon tunggu.'`.
+- Kunci keunikan request dibentuk berdasarkan: `metode | url | query parameter | payload data`.
 
-Then, and every time you update your native dependencies, run:
+---
 
-```sh
-bundle exec pod install
-```
+## 📦 Alur Pengemasan & Deployment (CI/CD)
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+Rilis aplikasi Android dikelola secara otomatis menggunakan GitHub Actions melalui workflow yang didefinisikan di `.github/workflows/android-release-vps.yml`.
 
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+### Cara Kerja Workflow Rilis:
+1. **Pemicu (Trigger)**: Push commit baru ke branch `main` atau trigger manual melalui tab Actions di GitHub.
+2. **Persiapan Environtment**: Setup Java 17 dan Node 20, lalu install dependensi menggunakan `npm ci`.
+3. **Pemberian Tanda Tangan Keystore**: Mendekode file Android Keystore dari GitHub Secret (`ANDROID_KEYSTORE_BASE64`) menjadi file `android/app/upload-keystore.jks`.
+4. **Validasi Versi**: Membaca `versionCode` lokal dari [android/app/build.gradle](file:///d:/Coding/PlanToday/android/app/build.gradle) dan membandingkannya dengan versi rilis terakhir di server (`latest.json`). Jika versi lokal tidak lebih tinggi, build akan dibatalkan secara otomatis guna mencegah konflik versi.
+5. **Kompilasi**: Melakukan build APK Rilis menggunakan Gradle:
+   ```bash
+   ./gradlew assembleRelease
+   ```
+6. **Unggah ke VPS**: Mengunggah APK hasil kompilasi dan manifes pembaruan `latest.json` ke VPS tujuan (`103.94.238.252`) via SCP.
+7. **Pembersihan Logistik**: Script di VPS akan memindahkan APK ke folder rilis utama dan menghapus versi lama secara otomatis, dengan hanya mempertahankan **2 versi APK terbaru** untuk efisiensi penyimpanan.
