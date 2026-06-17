@@ -94,8 +94,8 @@ android {
         applicationId "com.plantoday"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 35  // selalu naikkan ketika mau build
-        versionName "1.5.3" // selalu naikkan ketika mau build
+        versionCode 36  // selalu naikkan ketika mau build
+        versionName "1.5.4" // selalu naikkan ketika mau build
     }
     signingConfigs {
         debug {
