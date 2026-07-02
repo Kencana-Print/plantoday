@@ -201,6 +201,7 @@ async function compressToUnderLimit(
 
 export default function EditVisitScreen({ navigation, route }: any) {
   const { user } = useAuth();
+  const isManager = String(user?.jabatan || '').toUpperCase() === 'MANAGER';
   const insets = useSafeAreaInsets();
   const runGuardedPress = usePressGuard();
 
@@ -614,8 +615,8 @@ export default function EditVisitScreen({ navigation, route }: any) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <Text style={styles.title}>Visit</Text>
-            <Text style={styles.subtitle}>Edit Kunjungan</Text>
+            <Text style={styles.title}>{isManager ? 'Detail Visit' : 'Visit'}</Text>
+            <Text style={styles.subtitle}>{isManager ? 'Informasi kunjungan sales' : 'Edit Kunjungan'}</Text>
           </View>
 
           {/* Sales (cabang) */}
@@ -631,8 +632,8 @@ export default function EditVisitScreen({ navigation, route }: any) {
 
             <Text style={styles.label}>Tanggal Visit</Text>
             <TouchableOpacity
-              onPress={() => setShowDate(true)}
-              activeOpacity={0.9}
+              onPress={() => !isManager && setShowDate(true)}
+              activeOpacity={isManager ? 1 : 0.9}
               style={styles.selectWrap}
             >
               <Text
@@ -640,7 +641,7 @@ export default function EditVisitScreen({ navigation, route }: any) {
               >
                 {tanggal ? formatDisplayDate(tanggal) : 'Pilih Tanggal'}
               </Text>
-              <MaterialIcons name="edit-calendar" size={22} color={THEME.ink} />
+              {!isManager && <MaterialIcons name="edit-calendar" size={22} color={THEME.ink} />}
             </TouchableOpacity>
 
             {showDate && (
@@ -703,15 +704,17 @@ export default function EditVisitScreen({ navigation, route }: any) {
               </View>
             </View>
 
-            <TouchableOpacity
-              onPress={() =>
-                runGuardedPress('edit-visit:get-location', ambilLokasi, 800)
-              }
-              style={styles.btnAccent}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.btnAccentText}>AMBIL LOKASI</Text>
-            </TouchableOpacity>
+            {!isManager && (
+              <TouchableOpacity
+                onPress={() =>
+                  runGuardedPress('edit-visit:get-location', ambilLokasi, 800)
+                }
+                style={styles.btnAccent}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.btnAccentText}>AMBIL LOKASI</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Foto */}
             <Text style={styles.label}>Foto</Text>
@@ -738,7 +741,7 @@ export default function EditVisitScreen({ navigation, route }: any) {
               </View>
             )}
 
-            {uploadPending && (
+            {uploadPending && !isManager && (
               <TouchableOpacity
                 onPress={() =>
                   runGuardedPress('edit-visit:retry-upload', uploadUlang, 800)
@@ -755,38 +758,41 @@ export default function EditVisitScreen({ navigation, route }: any) {
               </TouchableOpacity>
             )}
 
-            <View style={styles.row}>
-              <TouchableOpacity
-                onPress={() =>
-                  runGuardedPress('edit-visit:pick-camera', pickFromCamera, 800)
-                }
-                style={[styles.btnSoft, { flex: 1 }]}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.btnSoftText}>KAMERA</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() =>
-                  runGuardedPress(
-                    'edit-visit:pick-gallery',
-                    pickFromGallery,
-                    800,
-                  )
-                }
-                style={[styles.btnSoft, { flex: 1 }]}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.btnSoftText}>GALERI</Text>
-              </TouchableOpacity>
-            </View>
+            {!isManager && (
+              <View style={styles.row}>
+                <TouchableOpacity
+                  onPress={() =>
+                    runGuardedPress('edit-visit:pick-camera', pickFromCamera, 800)
+                  }
+                  style={[styles.btnSoft, { flex: 1 }]}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.btnSoftText}>KAMERA</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() =>
+                    runGuardedPress(
+                      'edit-visit:pick-gallery',
+                      pickFromGallery,
+                      800,
+                    )
+                  }
+                  style={[styles.btnSoft, { flex: 1 }]}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.btnSoftText}>GALERI</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-            {/* Catatan */}
-            <Text style={styles.label}>Catatan</Text>
+            {/* Keperluan */}
+            <Text style={styles.label}>Keperluan</Text>
             <View style={[styles.textAreaWrap]}>
               <TextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder="Tulis catatan..."
+                editable={!isManager}
+                placeholder="Tulis keperluan..."
                 placeholderTextColor={THEME.muted}
                 multiline
                 numberOfLines={3}
@@ -795,13 +801,14 @@ export default function EditVisitScreen({ navigation, route }: any) {
               />
             </View>
 
-            {/* Keperluan */}
-            <Text style={styles.label}>Keperluan</Text>
+            {/* Hasil */}
+            <Text style={styles.label}>Hasil</Text>
             <View style={[styles.textAreaWrap]}>
               <TextInput
                 value={catatan}
                 onChangeText={setCatatan}
-                placeholder="Tulis keperluan..."
+                editable={!isManager}
+                placeholder="Tulis hasil kunjungan..."
                 placeholderTextColor={THEME.muted}
                 multiline
                 numberOfLines={4}
@@ -810,29 +817,43 @@ export default function EditVisitScreen({ navigation, route }: any) {
               />
             </View>
 
-            <TouchableOpacity
-              onPress={simpan}
-              disabled={!canSubmit}
-              style={[styles.btnPrimary, !canSubmit && { opacity: 0.55 }]}
-              activeOpacity={0.9}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.btnPrimaryText}>UPDATE VISIT</Text>
-              )}
-            </TouchableOpacity>
+            {isManager ? (
+              <TouchableOpacity
+                onPress={() =>
+                  runGuardedPress('edit-visit:back', () => navigation.goBack())
+                }
+                style={styles.btnPrimary}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.btnPrimaryText}>KEMBALI</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <TouchableOpacity
+                  onPress={simpan}
+                  disabled={!canSubmit}
+                  style={[styles.btnPrimary, !canSubmit && { opacity: 0.55 }]}
+                  activeOpacity={0.9}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.btnPrimaryText}>UPDATE VISIT</Text>
+                  )}
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() =>
-                runGuardedPress('edit-visit:cancel', () => navigation.goBack())
-              }
-              disabled={loading}
-              style={styles.btnGhost}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.btnGhostText}>Batal</Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() =>
+                    runGuardedPress('edit-visit:cancel', () => navigation.goBack())
+                  }
+                  disabled={loading}
+                  style={styles.btnGhost}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.btnGhostText}>Batal</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -892,11 +913,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
-    height: 55,
+    height: 45,
     marginBottom: 12,
   },
 
@@ -904,16 +925,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
-    height: 55,
+    height: 45,
     marginBottom: 12,
   },
 
-  input: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '800' },
-  selectText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '900' },
+  input: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '600' },
+  selectText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '600' },
 
   row: {
     flexDirection: 'row',
@@ -925,25 +946,25 @@ const styles = StyleSheet.create({
   helper: {
     color: THEME.muted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
     marginTop: -4,
     marginLeft: 4,
   },
 
   btnPrimary: {
     marginTop: 14,
-    height: 52,
-    borderRadius: 14,
+    height: 45,
+    borderRadius: 10,
     backgroundColor: THEME.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPrimaryText: { color: '#fff', fontWeight: '900', letterSpacing: 0.4 },
+  btnPrimaryText: { color: '#fff', fontWeight: '700', letterSpacing: 0.4 },
 
   btnSoft: {
-    height: 55,
+    height: 45,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    borderRadius: 10,
     backgroundColor: 'rgba(79,70,229,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(79,70,229,0.18)',
@@ -952,15 +973,15 @@ const styles = StyleSheet.create({
   },
   btnSoftText: {
     color: THEME.primary,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 0.4,
     fontSize: 12,
   },
 
   btnAccent: {
     marginTop: 4,
-    height: 50,
-    borderRadius: 14,
+    height: 45,
+    borderRadius: 10,
     backgroundColor: 'rgba(6,182,212,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(6,182,212,0.24)',
@@ -970,18 +991,18 @@ const styles = StyleSheet.create({
   },
   btnAccentText: {
     color: THEME.ink,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 0.3,
     fontSize: 12,
   },
 
   btnGhost: { marginTop: 10, alignItems: 'center', paddingVertical: 10 },
-  btnGhostText: { color: THEME.muted, fontWeight: '900' },
+  btnGhostText: { color: THEME.muted, fontWeight: '700' },
 
   photo: {
     width: '100%',
     height: 180,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     marginTop: 6,
@@ -990,13 +1011,13 @@ const styles = StyleSheet.create({
     color: THEME.muted,
     fontSize: 12,
     marginTop: 8,
-    fontWeight: '800',
+    fontWeight: '600',
   },
 
   photoEmpty: {
     width: '100%',
     height: 120,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     backgroundColor: THEME.soft,
@@ -1010,7 +1031,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,

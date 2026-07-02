@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginLeft: 4,
     marginTop: 10,
-    fontWeight: '800',
+    fontWeight: '600',
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
@@ -379,18 +379,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
     marginBottom: 12,
-    height: 55,
+    height: 45,
   },
 
   inputIconWrap: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
   },
 
   icon: { fontSize: 16 },
-  input: { flex: 1, color: THEME.ink, fontSize: 16, fontWeight: '700' },
+  input: { flex: 1, color: THEME.ink, fontSize: 16, fontWeight: '600' },
 
   showBtn: {
     paddingHorizontal: 10,
@@ -411,14 +411,14 @@ const styles = StyleSheet.create({
   },
   showBtnText: {
     color: THEME.muted,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 12,
     letterSpacing: 0.4,
   },
 
   primaryButton: {
-    borderRadius: 16,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 1,
   },
 
@@ -434,9 +434,9 @@ const styles = StyleSheet.create({
     marginTop: 10,
     alignItems: 'center',
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: 10,
   },
-  secondaryButtonText: { color: THEME.muted, fontSize: 14, fontWeight: '800' },
+  secondaryButtonText: { color: THEME.muted, fontSize: 14, fontWeight: '600' },
 
   /* Modal ala Home */
   modalCard: {

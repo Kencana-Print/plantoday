@@ -93,7 +93,7 @@ export default function CircularProgressAnimated({
             justifyContent: 'center',
             }}
         >
-            <Text style={{ fontSize: 22, fontWeight: '900', color: textColor }}>
+            <Text style={{ fontSize: Math.round(size / 5.5), fontWeight: '900', color: textColor }}>
             {pctText.toFixed(1)}%
             </Text>
         </View>

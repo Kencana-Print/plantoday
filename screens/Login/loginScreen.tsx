@@ -12,14 +12,22 @@ import {
   StyleSheet,
   StatusBar,
 } from 'react-native';
+import Svg, {
+  Defs,
+  LinearGradient as SvgGradient,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
 
 import LinearGradient from 'react-native-linear-gradient';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Toast from 'react-native-toast-message';
 import DeviceInfo from 'react-native-device-info';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../../services/api';
 import { useAuth } from '../../context/authContext';
 import { checkAppUpdateWithStatus } from '../../services/appUpdate';
+import { THEME } from '../theme';
 import {
   clearRememberedUsername,
   getRememberedUsername,
@@ -27,19 +35,6 @@ import {
   setRememberedUsername,
   setRememberMe as persistRememberMe,
 } from '../../services/rememberMeStorage';
-
-const THEME = {
-  primary: '#4F46E5',
-  accent: '#06B6D4',
-  ink: '#0F172A',
-  muted: '#64748B',
-  card: '#FFFFFF',
-  soft: '#F1F5F9',
-  line: 'rgba(15,23,42,0.08)',
-  danger: '#EF4444',
-  bgTop: '#F7F9FF',
-  bgBottom: '#FFFFFF',
-};
 
 export default function LoginScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -221,7 +216,24 @@ export default function LoginScreen({ navigation }: any) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <Text style={styles.appTitle}>PlanToday</Text>
+            <Svg width={240} height={55} viewBox="0 0 240 55">
+              <Defs>
+                <SvgGradient id="loginGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <Stop offset="0%" stopColor="#4F46E5" />
+                  <Stop offset="100%" stopColor="#06B6D4" />
+                </SvgGradient>
+              </Defs>
+              <SvgText
+                fill="url(#loginGrad)"
+                fontSize="40"
+                fontWeight="900"
+                letterSpacing="0.6"
+                x="25"
+                y="42"
+              >
+                PlanToday
+              </SvgText>
+            </Svg>
           </View>
 
           <View style={styles.formCard}>
@@ -230,15 +242,6 @@ export default function LoginScreen({ navigation }: any) {
             {/* Username */}
             <Text style={styles.label}>Username</Text>
             <View style={styles.inputContainer}>
-              <LinearGradient
-                colors={['rgba(79,70,229,0.18)', 'rgba(6,182,212,0.14)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.inputIconWrap}
-              >
-                <Text style={styles.iconPlaceholder}>👤</Text>
-              </LinearGradient>
-
               <TextInput
                 placeholder="..."
                 placeholderTextColor={THEME.muted}
@@ -255,15 +258,6 @@ export default function LoginScreen({ navigation }: any) {
             {/* Password */}
             <Text style={styles.label}>Password</Text>
             <View style={styles.inputContainer}>
-              <LinearGradient
-                colors={['rgba(79,70,229,0.18)', 'rgba(6,182,212,0.14)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.inputIconWrap}
-              >
-                <Text style={styles.iconPlaceholder}>🔒</Text>
-              </LinearGradient>
-
               <TextInput
                 placeholder="***"
                 placeholderTextColor={THEME.muted}
@@ -277,13 +271,14 @@ export default function LoginScreen({ navigation }: any) {
 
               <TouchableOpacity
                 onPress={() => setShowPass(v => !v)}
-                style={styles.showBtn}
                 activeOpacity={0.85}
                 disabled={loading}
               >
-                <Text style={styles.showBtnText}>
-                  {showPass ? 'HIDE' : 'SHOW'}
-                </Text>
+                <MaterialIcons
+                  name={showPass ? 'visibility' : 'visibility-off'}
+                  size={20}
+                  color={THEME.muted}
+                />
               </TouchableOpacity>
             </View>
 
@@ -399,7 +394,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginLeft: 4,
     marginTop: 6,
-    fontWeight: '800',
+    fontWeight: '600',
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
@@ -409,36 +404,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
     marginBottom: 12,
-    height: 55,
+    height: 45,
   },
 
-  inputIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(79,70,229,0.14)',
-    marginRight: 10,
-  },
-  iconPlaceholder: { fontSize: 16 },
+  input: { flex: 1, color: THEME.ink, fontSize: 16, fontWeight: '600' },
 
-  input: { flex: 1, color: THEME.ink, fontSize: 16, fontWeight: '700' },
-
-  showBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(15,23,42,0.04)',
-    borderWidth: 1,
-    borderColor: THEME.line,
-  },
   showBtnText: {
     color: THEME.muted,
     fontWeight: '900',
@@ -485,8 +460,8 @@ const styles = StyleSheet.create({
 
   /* Primary button */
   loginButton: {
-    borderRadius: 16,
-    paddingVertical: 14,
+    borderRadius: 10,
+    paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
@@ -494,14 +469,14 @@ const styles = StyleSheet.create({
   loginButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 0.3,
   },
 
   footerLink: { marginTop: 14, alignItems: 'center' },
-  footerText: { color: THEME.muted, fontSize: 13, fontWeight: '700' },
+  footerText: { color: THEME.muted, fontSize: 13, fontWeight: '500' },
   footerLinkBold: {
-    fontWeight: '900',
+    fontWeight: '700',
     textDecorationLine: 'underline',
     color: THEME.ink,
   },
@@ -511,7 +486,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: 'rgba(100,116,139,0.75)',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '500',
   },
 
   updateStatusNote: {
@@ -519,7 +494,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: THEME.muted,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '500',
   },
 
   updateStatusAvailable: {

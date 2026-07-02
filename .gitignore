@@ -24,6 +24,10 @@ DerivedData
 /docs
 /android/app/keystore_base64.txt
 env.tsx
+DESIGN.md
+.gemini/
+graphify-out/
+.agents/
 
 # Android/IntelliJ
 #

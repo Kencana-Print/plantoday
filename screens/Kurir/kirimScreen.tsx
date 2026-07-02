@@ -235,10 +235,10 @@ export default function KurirKirimScreen() {
             <Text style={styles.dateText}>
               {formatDisplayDate(tanggalAwal)}
             </Text>
-            <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
+            <MaterialIcons name="edit-calendar" color={THEME.ink} size={18} />
           </TouchableOpacity>
         </View>
-
+ 
         <View style={styles.col}>
           <Text style={styles.label}>Tanggal Akhir</Text>
           <TouchableOpacity
@@ -249,7 +249,7 @@ export default function KurirKirimScreen() {
             <Text style={styles.dateText}>
               {formatDisplayDate(tanggalAkhir)}
             </Text>
-            <MaterialIcons name="edit-calendar" color={THEME.ink} size={22} />
+            <MaterialIcons name="edit-calendar" color={THEME.ink} size={18} />
           </TouchableOpacity>
         </View>
       </View>
@@ -419,23 +419,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
-    height: 55,
+    height: 45,
   },
   label: {
     color: THEME.muted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
     marginLeft: 4,
     marginBottom: 6,
     marginTop: 10,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
-  dateText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '900' },
+  dateText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '600' },
   smallHint: {
     marginTop: 10,
     color: THEME.muted,

@@ -292,9 +292,14 @@ export default function TambahVisitPlanScreen({ navigation, route }: any) {
               </Text>
               <MaterialIcons name="edit-calendar" size={22} color={THEME.ink} />
             </TouchableOpacity>
-            <Text style={styles.dateWarning}>
-              ⚠️ Rencana kunjungan untuk hari yang sama hanya dapat diinput sebelum jam 08:00 pagi.
-            </Text>
+            <View style={styles.dateWarning}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                <MaterialIcons name="warning" size={14} color="#D97706" style={{ marginTop: 1 }} />
+                <Text style={{ flex: 1, color: '#D97706', fontSize: 11, fontWeight: '700', lineHeight: 16 }}>
+                  Rencana kunjungan untuk hari yang sama hanya dapat diinput sebelum jam 08:00 pagi.
+                </Text>
+              </View>
+            </View>
 
             {showDate && (
               <DateTimePicker
@@ -309,13 +314,13 @@ export default function TambahVisitPlanScreen({ navigation, route }: any) {
               />
             )}
 
-            {/* Catatan  */}
-            <Text style={styles.label}>Catatan</Text>
+            {/* Keperluan  */}
+            <Text style={styles.label}>Keperluan</Text>
             <View style={styles.textAreaWrap}>
               <TextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder="Tulis Catatan..."
+                placeholder="Tulis keperluan kunjungan..."
                 placeholderTextColor={THEME.muted}
                 multiline
                 numberOfLines={4}
@@ -432,11 +437,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
-    height: 55,
+    height: 45,
     marginBottom: 12,
   },
 
@@ -444,16 +449,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
-    height: 55,
+    height: 45,
     marginBottom: 12,
   },
 
-  input: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '800' },
-  selectText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '900' },
+  input: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '600' },
+  selectText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '600' },
 
   row: {
     flexDirection: 'row',
@@ -465,25 +470,25 @@ const styles = StyleSheet.create({
   helper: {
     color: THEME.muted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
     marginTop: -4,
     marginLeft: 4,
   },
 
   btnPrimary: {
     marginTop: 14,
-    height: 52,
-    borderRadius: 14,
+    height: 45,
+    borderRadius: 10,
     backgroundColor: THEME.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPrimaryText: { color: '#fff', fontWeight: '900', letterSpacing: 0.4 },
+  btnPrimaryText: { color: '#fff', fontWeight: '700', letterSpacing: 0.4 },
 
   btnSoft: {
-    height: 55,
+    height: 45,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    borderRadius: 10,
     backgroundColor: 'rgba(79,70,229,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(79,70,229,0.18)',
@@ -492,19 +497,19 @@ const styles = StyleSheet.create({
   },
   btnSoftText: {
     color: THEME.primary,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 0.4,
     fontSize: 12,
   },
 
   btnGhost: { marginTop: 10, alignItems: 'center', paddingVertical: 10 },
-  btnGhostText: { color: THEME.muted, fontWeight: '900' },
+  btnGhostText: { color: THEME.muted, fontWeight: '700' },
 
   textAreaWrap: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,

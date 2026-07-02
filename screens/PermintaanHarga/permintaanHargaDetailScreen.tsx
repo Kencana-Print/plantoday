@@ -24,6 +24,7 @@ import {
   getPermintaanHargaDetail,
 } from '../../services/permintaanHargaApi';
 import { PENAWARAN_THEME } from '../Penawaran/penawaranTheme';
+import { COMPANY_STATUS_COLORS } from '../theme';
 
 const THEME = PENAWARAN_THEME;
 
@@ -66,30 +67,13 @@ const formatNumber = (n: any) => {
 
 const statusBadgeStyle = (status: string) => {
   const key = String(status || '').toUpperCase();
-  const withTone = (base: string, text: string, label: string) => ({
-    bg: `${base}1A`,
-    border: base,
-    text,
-    label,
-  });
-
-  if (key === 'BELUM') return withTone('#6B7280', '#374151', 'BELUM');
-  if (key === 'MINTA') {
-    return withTone('#FF0000', '#B00000', 'MINTA');
-  }
-  if (key === 'CANCEL') {
-    return withTone('#0000FF', '#0000CC', 'CANCEL');
-  }
-  if (key === 'WAIT') {
-    return withTone('#008000', '#006400', 'WAIT');
-  }
-  if (key === 'DONE') {
-    return withTone('#000000', '#111827', 'DONE');
-  }
-  if (key === 'SELESAI') {
-    return withTone('#000000', '#111827', 'SELESAI');
-  }
-  return withTone('#6366F1', '#3730A3', key || '-');
+  const colors = COMPANY_STATUS_COLORS[key] || COMPANY_STATUS_COLORS.DEFAULT;
+  return {
+    bg: `${colors.base}1A`,
+    border: colors.base,
+    text: colors.text,
+    label: key || '-',
+  };
 };
 
 const getStatusDescription = (status: string) => {

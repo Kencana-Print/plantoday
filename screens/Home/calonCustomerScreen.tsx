@@ -1,5 +1,5 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -13,6 +13,7 @@ import {
   Platform,
   Modal,
   BackHandler,
+  Animated,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import api from '../../services/api';
@@ -66,6 +67,39 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
   // ===== mini edit fab =====
   const [selectedItem, setSelectedItem] = useState<CalonCustomer | null>(null);
   const [showEditFab, setShowEditFab] = useState(false);
+
+  // ===== Skeleton Loading =====
+  const skeletonPulse = useRef(new Animated.Value(0.3)).current;
+  const skeletonData = useMemo(
+    () => Array.from({ length: 5 }, (_, i) => ({ cc_kode: `skeleton-${i}`, isSkeleton: true } as any)),
+    [],
+  );
+
+  useEffect(() => {
+    let anim: Animated.CompositeAnimation | null = null;
+    if (loading) {
+      anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(skeletonPulse, {
+            toValue: 0.8,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(skeletonPulse, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      anim.start();
+    } else {
+      skeletonPulse.setValue(0.3);
+    }
+    return () => {
+      if (anim) anim.stop();
+    };
+  }, [loading, skeletonPulse]);
 
   const clearKeyword = useCallback(() => setKeyword(''), []);
 
@@ -305,7 +339,53 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
   }, []);
 
   const renderItem = useCallback(
-    ({ item }: { item: CalonCustomer }) => {
+    ({ item }: { item: CalonCustomer & { isSkeleton?: boolean } }) => {
+      if (item.isSkeleton) {
+        return (
+          <View style={styles.cardCompact}>
+            <View style={{ flex: 1, gap: 8 }}>
+              {/* Nama Skeleton */}
+              <Animated.View
+                style={[
+                  styles.skeletonBar,
+                  { width: '60%', height: 16, opacity: skeletonPulse },
+                ]}
+              />
+              {/* Alamat Skeleton */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <Animated.View
+                  style={[
+                    styles.skeletonBar,
+                    { width: 14, height: 14, borderRadius: 7, opacity: skeletonPulse },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    styles.skeletonBar,
+                    { width: '75%', height: 12, opacity: skeletonPulse },
+                  ]}
+                />
+              </View>
+              {/* Chip Skeleton */}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                <Animated.View
+                  style={[
+                    styles.skeletonBar,
+                    { width: 70, height: 22, borderRadius: 11, opacity: skeletonPulse },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    styles.skeletonBar,
+                    { width: 90, height: 22, borderRadius: 11, opacity: skeletonPulse },
+                  ]}
+                />
+              </View>
+            </View>
+          </View>
+        );
+      }
+
       const nama = item.cc_nama || '-';
       const kota = item.cc_kota || '-';
       const alamat = item.cc_alamat || '-';
@@ -358,7 +438,7 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
         </TouchableOpacity>
       );
     },
-    [openEdit, selectedItem, showEditFab],
+    [openEdit, selectedItem, showEditFab, skeletonPulse],
   );
 
   const ListHeader = (
@@ -371,8 +451,14 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
       {SearchBox}
 
       <Text style={styles.smallHint}>
-        Menampilkan: <Text style={{ fontWeight: '900' }}>{data.length}</Text>{' '}
-        data
+        {loading ? (
+          'Memuat data...'
+        ) : (
+          <>
+            Menampilkan: <Text style={{ fontWeight: '900' }}>{data.length}</Text>{' '}
+            data
+          </>
+        )}
       </Text>
 
       <View style={styles.divider} />
@@ -393,7 +479,7 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
       />
 
       <FlatList
-        data={data}
+        data={loading ? skeletonData : data}
         keyExtractor={(item, index) => {
           const sumber = String(item?.sumber || 'UNK');
           const id = String(item?.id || '').trim();
@@ -406,9 +492,7 @@ export default function RekapCalonCustomerScreen({ navigation }: any) {
         renderItem={renderItem}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator style={{ marginTop: 20 }} />
-          ) : (
+          loading ? null : (
             <Text style={styles.empty}>Belum ada data customer.</Text>
           )
         }
@@ -667,15 +751,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
-    height: 55,
+    height: 45,
     marginBottom: 10,
   },
   searchIcon: { fontSize: 16, marginRight: 10 },
-  searchInput: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '900' },
+  searchInput: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '600' },
 
   clearBtn: {
     width: 34,
@@ -863,5 +947,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '900',
     letterSpacing: 0.3,
+  },
+  skeletonBar: {
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
   },
 });

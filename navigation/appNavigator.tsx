@@ -67,6 +67,7 @@ export type RootStackParamList = {
     toMonth: number;
     target?: number;
     realisasi?: number;
+    ach?: number;
   };
   KurirMenu: undefined;
   KurirRencanaKirim: undefined;
@@ -81,10 +82,10 @@ export type RootStackParamList = {
   CariPerusahaanPenawaran: { from: string };
   CariSalesPenawaran: { from: string };
   CariNomorPenawaran: { from: string };
-  TrackingPenawaran: undefined;
+  TrackingPenawaran: { month?: number; year?: number } | undefined;
   TrackingMap: undefined;
-  TrackingSPK: undefined;
-  PermintaanHargaList: undefined;
+  TrackingSPK: { month?: number; year?: number } | undefined;
+  PermintaanHargaList: { month?: number; year?: number } | undefined;
   PermintaanHargaDetail: { nomor: string };
   PermintaanHargaForm: {
     mode: 'create' | 'edit';

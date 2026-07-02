@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
   Modal,
+  ScrollView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
@@ -24,6 +25,7 @@ import {
   getTrackingMapList,
   TrackingMapListItem,
 } from '../../services/trackingMapApi';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 
 const THEME = PENAWARAN_THEME;
 
@@ -78,13 +80,9 @@ export default function TrackingMapScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
-  // Checklist filters
-  const [filterBast, setFilterBast] = useState<'all' | 'belum' | 'sudah'>(
-    'all',
-  );
-  const [filterSjMap, setFilterSjMap] = useState<'all' | 'belum' | 'sudah'>(
-    'all',
-  );
+  // Status filter state (selaras dengan penawaran tetapi mendukung multi-select)
+  const [isFilterBast, setIsFilterBast] = useState(false);
+  const [isFilterSjMap, setIsFilterSjMap] = useState(false);
   const insets = useSafeAreaInsets();
   const initialRange = useMemo(() => getCurrentMonth(), []);
   const [startDate, setStartDate] = useState(initialRange.startDate);
@@ -93,7 +91,40 @@ export default function TrackingMapScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [items, setItems] = useState<TrackingMapListItem[]>([]);
+  const [rawItems, setRawItems] = useState<TrackingMapListItem[]>([]);
+
+  const filteredItems = useMemo(() => {
+    return rawItems.filter(item => {
+      // 1. Keduanya aktif -> BAST harus ada & SJ MAP harus ada
+      if (isFilterBast && isFilterSjMap) {
+        return !!item.tanggal_bast && !!item.tanggal_sj_map;
+      }
+      // 2. Hanya BAST aktif -> BAST harus ada & SJ MAP harus kosong
+      if (isFilterBast) {
+        return !!item.tanggal_bast && !item.tanggal_sj_map;
+      }
+      // 3. Hanya SJ MAP aktif -> SJ MAP harus ada & BAST harus kosong
+      if (isFilterSjMap) {
+        return !!item.tanggal_sj_map && !item.tanggal_bast;
+      }
+      // 4. Keduanya tidak aktif -> tampilkan semua
+      return true;
+    });
+  }, [rawItems, isFilterBast, isFilterSjMap]);
+
+  const counts = useMemo(() => {
+    let bastCount = 0;
+    let sjMapCount = 0;
+    rawItems.forEach(item => {
+      if (item.tanggal_bast) bastCount++;
+      if (item.tanggal_sj_map) sjMapCount++;
+    });
+    return {
+      bast: bastCount,
+      sjMap: sjMapCount,
+    };
+  }, [rawItems]);
+
   const [loading, setLoading] = useState(false);
   const [isSearchSubmitting, setIsSearchSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,30 +141,9 @@ export default function TrackingMapScreen() {
       try {
         setErrorMessage(null);
         if (!token) {
-          setItems([]);
+          setRawItems([]);
           setHasLoadedOnce(true);
           return;
-        }
-
-        let appliedFilterBast: string | undefined;
-        let appliedFilterSjMap: string | undefined;
-
-        if (filterBast === 'sudah' && filterSjMap === 'all') {
-          // BAST saja yang ON -> tampilkan yang BAST isi, SJMAP kosong
-          appliedFilterBast = 'sudah';
-          appliedFilterSjMap = 'belum';
-        } else if (filterSjMap === 'sudah' && filterBast === 'all') {
-          // SJMAP saja yang ON -> tampilkan yang SJMAP isi, BAST kosong
-          appliedFilterSjMap = 'sudah';
-          appliedFilterBast = 'belum';
-        } else if (filterBast === 'sudah' && filterSjMap === 'sudah') {
-          // Keduanya ON -> tampilkan yang BAST sudah & SJMAP sudah
-          appliedFilterBast = 'sudah';
-          appliedFilterSjMap = 'sudah';
-        } else {
-          // Keduanya OFF -> tampilkan semua tanpa terfilter
-          appliedFilterBast = undefined;
-          appliedFilterSjMap = undefined;
         }
 
         const { items: newItems, filter_options } = await getTrackingMapList(
@@ -142,16 +152,14 @@ export default function TrackingMapScreen() {
             endDate,
             search: appliedSearch.trim() || undefined,
             sales: appliedSalesSearch.trim() || undefined,
-            filterBast: appliedFilterBast,
-            filterSjMap: appliedFilterSjMap,
           },
           token,
         );
-        setItems(newItems);
+        setRawItems(newItems);
         setMasterSales(filter_options.sales);
         setHasLoadedOnce(true);
       } catch (err: any) {
-        setItems([]);
+        setRawItems([]);
         const message =
           err?.response?.data?.message || 'Gagal mengambil data tracking MAP';
         setErrorMessage(message);
@@ -167,15 +175,7 @@ export default function TrackingMapScreen() {
         setIsSearchSubmitting(false);
       }
     },
-    [
-      appliedSearch,
-      appliedSalesSearch,
-      endDate,
-      startDate,
-      token,
-      filterBast,
-      filterSjMap,
-    ],
+    [appliedSearch, appliedSalesSearch, endDate, startDate, token],
   );
 
   useEffect(() => {
@@ -309,7 +309,7 @@ export default function TrackingMapScreen() {
       />
 
       <FlatList
-        data={showSkeleton ? [] : items}
+        data={showSkeleton ? [] : filteredItems}
         extraData={openedItemKey}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
@@ -359,7 +359,7 @@ export default function TrackingMapScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Search + Sales inline row */}
+              {/* Search inline with Cari button */}
               <View style={styles.searchRow}>
                 <View style={styles.searchBox}>
                   <TextInput
@@ -384,73 +384,6 @@ export default function TrackingMapScreen() {
                   ) : null}
                 </View>
                 <TouchableOpacity
-                  style={styles.searchBox}
-                  onPress={() => setPickerVisible(true)}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.searchInput,
-                      { textAlignVertical: 'center', lineHeight: 40 },
-                      !salesSearch && { color: THEME.muted },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {salesSearch || 'Sales'}
-                  </Text>
-                  {salesSearch.trim() ? (
-                    <TouchableOpacity
-                      style={styles.clearSearchButton}
-                      onPress={() => setSalesSearch('')}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.clearSearchButtonText}>×</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </TouchableOpacity>
-              </View>
-
-              {/* Checkbox filters + Cari button + count badge */}
-              <View style={styles.chipRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.chipItem,
-                    filterBast === 'sudah' && styles.chipItemActive,
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() =>
-                    setFilterBast(prev => (prev === 'sudah' ? 'all' : 'sudah'))
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.chipLabel,
-                      filterBast === 'sudah' && styles.chipLabelActive,
-                    ]}
-                  >
-                    ✓ BAST
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.chipItem,
-                    filterSjMap === 'sudah' && styles.chipItemActive,
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() =>
-                    setFilterSjMap(prev => (prev === 'sudah' ? 'all' : 'sudah'))
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.chipLabel,
-                      filterSjMap === 'sudah' && styles.chipLabelActive,
-                    ]}
-                  >
-                    ✓ SJ MAP
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
                   style={styles.searchButton}
                   activeOpacity={0.85}
                   onPress={applyFilter}
@@ -469,7 +402,125 @@ export default function TrackingMapScreen() {
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
-                <Text style={styles.countBadge}>{items.length}</Text>
+              </View>
+
+              {/* Sales picker row + countBadge */}
+              <View style={styles.searchRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.pickerChip,
+                    salesSearch ? styles.pickerChipActive : null,
+                  ]}
+                  onPress={() => setPickerVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons
+                    name="person"
+                    size={14}
+                    color={salesSearch ? THEME.primary : THEME.muted}
+                  />
+                  <Text
+                    style={[
+                      styles.pickerChipText,
+                      salesSearch && styles.pickerChipTextActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {salesSearch || 'Sales'}
+                  </Text>
+                  {salesSearch.trim() ? (
+                    <TouchableOpacity
+                      style={styles.clearSearchButton}
+                      onPress={() => {
+                        setSalesSearch('');
+                        setAppliedSalesSearch('');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <MaterialIcons name="close" size={12} color={THEME.ink} />
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
+                <Text style={styles.countBadge}>{rawItems.length}</Text>
+              </View>
+
+              {/* Status filter chip row (Scrollable horizontal) */}
+              <View style={styles.chipRow}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipScroll}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.chipItem,
+                      !isFilterBast && !isFilterSjMap && styles.chipItemActive,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      setIsFilterBast(false);
+                      setIsFilterSjMap(false);
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <MaterialIcons
+                        name="format-list-bulleted"
+                        size={14}
+                        color={(!isFilterBast && !isFilterSjMap) ? THEME.primary : THEME.muted}
+                      />
+                      <Text
+                        style={[
+                          styles.chipLabel,
+                          !isFilterBast && !isFilterSjMap && styles.chipLabelActive,
+                        ]}
+                      >
+                        Semua ({rawItems.length})
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.chipItem,
+                      isFilterBast && styles.chipItemActive,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => setIsFilterBast(prev => !prev)}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981' }} />
+                      <Text
+                        style={[
+                          styles.chipLabel,
+                          isFilterBast && styles.chipLabelActive,
+                        ]}
+                      >
+                        BAST ({counts.bast})
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.chipItem,
+                      isFilterSjMap && styles.chipItemActive,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => setIsFilterSjMap(prev => !prev)}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3B82F6' }} />
+                      <Text
+                        style={[
+                          styles.chipLabel,
+                          isFilterSjMap && styles.chipLabelActive,
+                        ]}
+                      >
+                        SJ MAP ({counts.sjMap})
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </ScrollView>
               </View>
 
               {/* Inline loading indicator */}
@@ -534,6 +585,7 @@ export default function TrackingMapScreen() {
                   style={styles.modalOption}
                   onPress={() => {
                     setSalesSearch(item);
+                    setAppliedSalesSearch(item);
                     setPickerVisible(false);
                   }}
                 >
@@ -592,7 +644,7 @@ const TrackingMapRow = memo(
               {item.customer || '-'}
             </Text>
             <Text style={styles.rowSub} numberOfLines={2}>
-              {item.alamat || '-'}
+              Sales: {item.sales || '-'}
             </Text>
           </View>
           <View style={styles.rowRight}>
@@ -681,16 +733,17 @@ const styles = StyleSheet.create({
   },
   filterCard: {
     backgroundColor: THEME.card,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: THEME.line,
-    padding: 12,
+    padding: 14,
     ...PENAWARAN_SHADOW.card,
   },
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    marginTop: 10,
   },
   dateSeparator: {
     color: THEME.muted,
@@ -699,24 +752,22 @@ const styles = StyleSheet.create({
   },
   dateChip: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 9,
     backgroundColor: THEME.soft,
   },
   dateChipLabel: {
     color: THEME.muted,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.3,
   },
   dateChipValue: {
     color: THEME.ink,
-    marginTop: 1,
-    fontSize: 12,
+    marginTop: 2,
+    fontSize: 13,
     fontWeight: '800',
   },
   searchRow: {
@@ -729,9 +780,9 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderColor: THEME.line,
-    borderRadius: 12,
+    borderRadius: 15,
     backgroundColor: THEME.soft,
-    height: 40,
+    height: 46,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -740,18 +791,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 0,
     color: THEME.ink,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     padding: 0,
   },
   clearSearchButton: {
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     borderRadius: 999,
     backgroundColor: 'rgba(100,116,139,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6,
+    marginLeft: 8,
   },
   clearSearchButtonText: {
     color: THEME.ink,
@@ -760,10 +811,10 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   chipRow: {
-    marginTop: 10,
+    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   chipItem: {
     paddingHorizontal: 12,
@@ -789,22 +840,52 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   searchButton: {
-    borderRadius: 12,
+    borderRadius: 14,
     overflow: 'hidden',
-    marginLeft: 'auto',
   },
   searchButtonGradient: {
-    height: 34,
-    paddingHorizontal: 16,
+    height: 46,
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
   },
   searchButtonText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0.2,
+  },
+  pickerChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: THEME.line,
+    borderRadius: 14,
+    backgroundColor: THEME.soft,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 6,
+  },
+  pickerChipActive: {
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    borderColor: THEME.primary,
+  },
+  pickerChipText: {
+    flex: 1,
+    color: THEME.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  pickerChipTextActive: {
+    color: THEME.primary,
+    fontWeight: '800',
+  },
+  chipScroll: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
   },
   countBadge: {
     color: THEME.ink,

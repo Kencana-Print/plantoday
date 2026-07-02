@@ -1,5 +1,5 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -12,6 +12,7 @@ import {
   Platform,
   Modal,
   BackHandler,
+  Animated,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -23,6 +24,7 @@ import { usePressGuard } from '../../utils/usePressGuard';
 import { GlassSelect } from '../Register/glassSelect';
 import Toast from 'react-native-toast-message';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { THEME } from '../theme';
 
 type RekapItem = {
   id: number;
@@ -47,20 +49,7 @@ type Karyawan = {
   kar_jabatan: string;
 };
 
-const THEME = {
-  primary: '#4F46E5',
-  accent: '#06B6D4',
-  ink: '#0F172A',
-  muted: '#64748B',
-  card: '#FFFFFF',
-  soft: '#F1F5F9',
-  line: 'rgba(15,23,42,0.08)',
-  danger: '#EF4444',
-  bgTop: '#F7F9FF',
-  bgBottom: '#FFFFFF',
-  wa: '#22C55E',
-  ok: '#16A34A',
-};
+
 
 const ymdToDate = (ymd: string) => {
   const [y, m, d] = ymd.split('-').map(n => parseInt(n, 10));
@@ -121,6 +110,39 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
   );
 
   const [loading, setLoading] = useState(false);
+
+  // ===== Skeleton Loading =====
+  const skeletonPulse = useRef(new Animated.Value(0.3)).current;
+  const skeletonData = useMemo(
+    () => Array.from({ length: 5 }, (_, i) => ({ id: `skeleton-${i}`, isSkeleton: true } as any)),
+    [],
+  );
+
+  useEffect(() => {
+    let anim: Animated.CompositeAnimation | null = null;
+    if (loading) {
+      anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(skeletonPulse, {
+            toValue: 0.8,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(skeletonPulse, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      anim.start();
+    } else {
+      skeletonPulse.setValue(0.3);
+    }
+    return () => {
+      if (anim) anim.stop();
+    };
+  }, [loading, skeletonPulse]);
 
   const normalizeYmd = (v: string) => String(v || '').slice(0, 10);
   const isPlanSudah = (item?: RekapItem | null) => {
@@ -483,7 +505,45 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
 
   // ===== render item =====
   const renderItem = useCallback(
-    ({ item }: { item: RekapItem }) => {
+    ({ item }: { item: RekapItem & { isSkeleton?: boolean } }) => {
+      if (item.isSkeleton) {
+        return (
+          <View style={styles.cardCompact}>
+            <View style={{ flex: 1, gap: 8 }}>
+              {/* Nama Customer Skeleton */}
+              <Animated.View
+                style={[
+                  styles.skeletonBar,
+                  { width: '60%', height: 16, opacity: skeletonPulse },
+                ]}
+              />
+              {/* Tanggal Skeleton */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <Animated.View
+                  style={[
+                    styles.skeletonBar,
+                    { width: 14, height: 14, borderRadius: 7, opacity: skeletonPulse },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    styles.skeletonBar,
+                    { width: '40%', height: 12, opacity: skeletonPulse },
+                  ]}
+                />
+              </View>
+            </View>
+            {/* Status Badge Skeleton */}
+            <Animated.View
+              style={[
+                styles.skeletonBar,
+                { width: 60, height: 24, borderRadius: 12, opacity: skeletonPulse },
+              ]}
+            />
+          </View>
+        );
+      }
+
       const done = String(item.realisasi || '').toUpperCase() === 'Y';
       const isSelected = selectedItem?.id === item.id && showEditFab;
 
@@ -668,8 +728,14 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
         </TouchableOpacity>
 
         <Text style={styles.smallHint}>
-          Menampilkan:{' '}
-          <Text style={{ fontWeight: '900' }}>{filteredData.length}</Text> data
+          {loading ? (
+            'Memuat data...'
+          ) : (
+            <>
+              Menampilkan:{' '}
+              <Text style={{ fontWeight: '900' }}>{filteredData.length}</Text> data
+            </>
+          )}
         </Text>
       </View>
       <View style={styles.divider} />
@@ -690,14 +756,12 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
       />
 
       <FlatList
-        data={filteredData}
-        keyExtractor={item => String(item.id)}
+        data={loading ? skeletonData : filteredData}
+        keyExtractor={(item, index) => item.isSkeleton ? `skeleton-${index}` : String(item.id)}
         renderItem={renderItem}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator style={{ marginTop: 20 }} />
-          ) : (
+          loading ? null : (
             <Text style={styles.empty}>Data visit plan tidak ditemukan.</Text>
           )
         }
@@ -1501,5 +1565,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '900',
     letterSpacing: 0.3,
+  },
+  skeletonBar: {
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
   },
 });

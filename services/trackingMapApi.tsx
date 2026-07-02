@@ -23,6 +23,7 @@ export type TrackingMapListItem = {
   mspk_kain?: string;
   mspk_finishing?: string;
   mspk_keterangan?: string;
+  sales?: string;
 };
 
 export const getTrackingMapList = async (

@@ -6,6 +6,7 @@ export type TrackingPenawaranListParams = {
   search?: string;
   sales?: string;
   customer?: string;
+  status?: string;
   limit?: number;
 };
 
@@ -22,6 +23,13 @@ export type TrackingPenawaranListItem = {
   map_workshop: string;
   map_keterangan: string;
   map_kendala: string;
+  status_tracking?: 'OPEN' | 'PARSIAL' | 'CLOSE';
+};
+
+export type TrackingPenawaranStatusCounts = {
+  OPEN: number;
+  PARSIAL: number;
+  CLOSE: number;
 };
 
 export type TrackingMapDetailItem = {
@@ -160,4 +168,19 @@ export const getTrackingPenawaranDetail = async (
       },
     },
   }) as TrackingPenawaranDetailResponse;
+};
+
+export const getTrackingPenawaranStatusCounts = async (
+  params?: { startDate?: string; endDate?: string } | null,
+  token?: string | null,
+) => {
+  const response = await api.get('/tracking-penawaran/status-counts', {
+    params: params || undefined,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  return (response.data?.data ?? {
+    OPEN: 0,
+    PARSIAL: 0,
+    CLOSE: 0,
+  }) as TrackingPenawaranStatusCounts;
 };

@@ -17,6 +17,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import LinearGradient from 'react-native-linear-gradient';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { PENAWARAN_SHADOW, PENAWARAN_THEME } from './penawaranTheme';
 import { useAuth } from '../../context/authContext';
 import { ListSkeleton } from '../../components/loadingSkeleton';
@@ -60,20 +61,80 @@ const formatDate = (ymd?: string) => {
   });
 };
 
-export default function TrackingSpkScreen() {
+export default function TrackingSpkScreen({ route }: any) {
   const { token } = useAuth();
   const [filterStatus, setFilterStatus] = useState<
     'all' | 'belum' | 'proses' | 'sudah'
   >('all');
   const insets = useSafeAreaInsets();
-  const initialRange = useMemo(() => getCurrentMonth(), []);
+  const initialRange = useMemo(() => {
+    const pMonth = route?.params?.month;
+    const pYear = route?.params?.year;
+    if (pMonth && pYear) {
+      const start = new Date(pYear, pMonth - 1, 1);
+      const end = new Date(pYear, pMonth, 0);
+      const toYmdLocal = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+          d.getDate(),
+        ).padStart(2, '0')}`;
+      return { startDate: toYmdLocal(start), endDate: toYmdLocal(end) };
+    }
+    return getCurrentMonth();
+  }, [route?.params?.month, route?.params?.year]);
+
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
+
+  useEffect(() => {
+    const pMonth = route?.params?.month;
+    const pYear = route?.params?.year;
+    if (pMonth && pYear) {
+      const start = new Date(pYear, pMonth - 1, 1);
+      const end = new Date(pYear, pMonth, 0);
+      const toYmdLocal = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+          d.getDate(),
+        ).padStart(2, '0')}`;
+      setStartDate(toYmdLocal(start));
+      setEndDate(toYmdLocal(end));
+    }
+  }, [route?.params?.month, route?.params?.year]);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [items, setItems] = useState<TrackingSpkListItem[]>([]);
+  const [rawItems, setRawItems] = useState<TrackingSpkListItem[]>([]);
+
+  const filteredItems = useMemo(() => {
+    return rawItems.filter(item => {
+      if (filterStatus === 'all') return true;
+      const order = Number(item.spk_jumlah) || 0;
+      const realisasi = Number(item.realisasi_total) || 0;
+      if (filterStatus === 'belum') return realisasi < 0.01;
+      if (filterStatus === 'sudah') return realisasi >= (order - 0.01);
+      if (filterStatus === 'proses') return realisasi >= 0.01 && realisasi < (order - 0.01);
+      return true;
+    });
+  }, [rawItems, filterStatus]);
+
+  const counts = useMemo(() => {
+    let belumCount = 0;
+    let prosesCount = 0;
+    let sudahCount = 0;
+    rawItems.forEach(item => {
+      const order = Number(item.spk_jumlah) || 0;
+      const realisasi = Number(item.realisasi_total) || 0;
+      if (realisasi < 0.01) {
+        belumCount++;
+      } else if (realisasi >= (order - 0.01)) {
+        sudahCount++;
+      } else {
+        prosesCount++;
+      }
+    });
+    return { belum: belumCount, proses: prosesCount, sudah: sudahCount };
+  }, [rawItems]);
+
   const [loading, setLoading] = useState(false);
   const [isSearchSubmitting, setIsSearchSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -90,7 +151,7 @@ export default function TrackingSpkScreen() {
       try {
         setErrorMessage(null);
         if (!token) {
-          setItems([]);
+          setRawItems([]);
           setHasLoadedOnce(true);
           return;
         }
@@ -100,14 +161,14 @@ export default function TrackingSpkScreen() {
             startDate,
             endDate,
             search: appliedSearch.trim() || undefined,
-            filterStatus: filterStatus !== 'all' ? filterStatus : undefined,
+            limit: 1000,
           },
           token,
         );
-        setItems(data);
+        setRawItems(data);
         setHasLoadedOnce(true);
       } catch (err: any) {
-        setItems([]);
+        setRawItems([]);
         const message =
           err?.response?.data?.message || 'Gagal mengambil data tracking SPK';
         setErrorMessage(message);
@@ -123,7 +184,7 @@ export default function TrackingSpkScreen() {
         setIsSearchSubmitting(false);
       }
     },
-    [appliedSearch, endDate, startDate, token, filterStatus],
+    [appliedSearch, endDate, startDate, token],
   );
 
   useEffect(() => {
@@ -250,7 +311,7 @@ export default function TrackingSpkScreen() {
       />
 
       <FlatList
-        data={showSkeleton ? [] : items}
+        data={showSkeleton ? [] : filteredItems}
         extraData={openedItemKey}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
@@ -352,14 +413,23 @@ export default function TrackingSpkScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.chipScroll}
                 >
-                  {(['belum', 'proses', 'sudah'] as const).map(opt => {
+                  {(['all', 'belum', 'proses', 'sudah'] as const).map(opt => {
                     const active = filterStatus === opt;
-                    const label =
-                      opt === 'belum'
-                        ? '🔴 Belum'
+                    const getDotColor = (): string | undefined => {
+                      if (opt === 'belum') return '#EF4444';
+                      if (opt === 'proses') return '#F59E0B';
+                      if (opt === 'sudah') return '#10B981';
+                      return undefined;
+                    };
+                    const dotColor = getDotColor();
+                    const labelText =
+                      opt === 'all'
+                        ? `Semua (${rawItems.length})`
+                        : opt === 'belum'
+                        ? `Belum (${counts.belum})`
                         : opt === 'proses'
-                        ? '🟡 Proses'
-                        : '🟢 Sudah';
+                        ? `Proses (${counts.proses})`
+                        : `Sudah (${counts.sudah})`;
                     return (
                       <TouchableOpacity
                         key={`status-${opt}`}
@@ -368,23 +438,32 @@ export default function TrackingSpkScreen() {
                           active && styles.chipItemActive,
                         ]}
                         activeOpacity={0.8}
-                        onPress={() =>
-                          setFilterStatus(prev => (prev === opt ? 'all' : opt))
-                        }
+                        onPress={() => setFilterStatus(opt)}
                       >
-                        <Text
-                          style={[
-                            styles.chipLabel,
-                            active && styles.chipLabelActive,
-                          ]}
-                        >
-                          {label}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          {opt === 'all' ? (
+                            <MaterialIcons
+                              name="format-list-bulleted"
+                              size={14}
+                              color={active ? THEME.primary : THEME.muted}
+                            />
+                          ) : (
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
+                          )}
+                          <Text
+                            style={[
+                              styles.chipLabel,
+                              active && styles.chipLabelActive,
+                            ]}
+                          >
+                            {labelText}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
                     );
                   })}
                 </ScrollView>
-                <Text style={styles.countBadge}>{items.length}</Text>
+                {/* <Text style={styles.countBadge}>{rawItems.length}</Text> */}
               </View>
 
               {/* Inline loading indicator */}
@@ -433,22 +512,22 @@ const TrackingSpkRow = memo(
     const getSpkStatus = () => {
       const order = Number(item.spk_jumlah) || 0;
       const realisasi = Number(item.realisasi_total) || 0;
-      if (realisasi === 0) {
+      if (realisasi < 0.01) {
         return {
-          label: 'Belum',
+          label: 'BELUM',
           color: '#EF4444',
           bgColor: 'rgba(239, 68, 68, 0.08)',
         };
       }
-      if (realisasi >= order) {
+      if (realisasi >= (order - 0.01)) {
         return {
-          label: 'Sudah',
+          label: 'SUDAH',
           color: '#10B981',
           bgColor: 'rgba(16, 185, 129, 0.08)',
         };
       }
       return {
-        label: 'Proses',
+        label: 'PROSES',
         color: '#F59E0B',
         bgColor: 'rgba(245, 158, 11, 0.08)',
       };

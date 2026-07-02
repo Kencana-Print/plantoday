@@ -311,3 +311,28 @@ export const deletePermintaanHargaImage = async (
     throw err;
   }
 };
+
+export type PermintaanHargaStatusCounts = {
+  BELUM: number;
+  MINTA: number;
+  WAIT: number;
+  DONE: number;
+  CANCEL: number;
+};
+
+export const getPermintaanHargaStatusCounts = async (
+  params?: { startDate?: string; endDate?: string } | null,
+  token?: string | null,
+) => {
+  const response = await api.get('/permintaan-harga/status-counts', {
+    params: params || undefined,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  return (response.data?.data ?? {
+    BELUM: 0,
+    MINTA: 0,
+    WAIT: 0,
+    DONE: 0,
+    CANCEL: 0,
+  }) as PermintaanHargaStatusCounts;
+};

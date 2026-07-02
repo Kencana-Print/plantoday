@@ -1,7 +1,8 @@
-/* eslint-disable react-native/no-inline-styles */
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { BaseToastProps } from 'react-native-toast-message';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { THEME } from '../screens/theme';
 
 type ConfirmToastProps = BaseToastProps & {
   props?: {
@@ -12,24 +13,14 @@ type ConfirmToastProps = BaseToastProps & {
   };
 };
 
-const THEME = {
-  primary: '#4F46E5',
-  accent: '#06B6D4',
-  ink: '#0F172A',
-  muted: '#64748B',
-  card: '#FFFFFF',
-  line: 'rgba(15,23,42,0.08)',
-  danger: '#EF4444',
-  success: '#16A34A',
-  info: '#0369A1',
-};
+
 
 export const toastConfig = {
   glassError: ({ text1, text2 }: BaseToastProps) => (
     <View style={[styles.container, styles.errorAccent]}>
       <View style={styles.content}>
         <View style={[styles.iconWrap, styles.errorIconWrap]}>
-          <Text style={styles.icon}>⚠️</Text>
+          <MaterialIcons name="error" size={20} color={THEME.danger} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{text1}</Text>
@@ -43,7 +34,7 @@ export const toastConfig = {
     <View style={[styles.container, styles.successAccent]}>
       <View style={styles.content}>
         <View style={[styles.iconWrap, styles.successIconWrap]}>
-          <Text style={styles.icon}>✅</Text>
+          <MaterialIcons name="check-circle" size={20} color={THEME.success} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{text1}</Text>
@@ -57,7 +48,7 @@ export const toastConfig = {
     <View style={[styles.container, styles.infoAccent]}>
       <View style={styles.content}>
         <View style={[styles.iconWrap, styles.infoIconWrap]}>
-          <Text style={styles.icon}>ℹ️</Text>
+          <MaterialIcons name="info" size={20} color={THEME.info} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{text1}</Text>

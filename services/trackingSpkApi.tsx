@@ -5,6 +5,7 @@ export type TrackingSpkListParams = {
     endDate?: string;
     search?: string;
     filterStatus?: string;
+    limit?: number;
 };
 
 export type TrackingSpkListItem = {
@@ -33,4 +34,21 @@ export const getTrackingSpkList = async (
     });
 
     return (response?.data?.data ?? []) as TrackingSpkListItem[];
+};
+
+export type TrackingSpkStatusCounts = {
+    BELUM: number;
+    PROSES: number;
+    SUDAH: number;
+};
+
+export const getTrackingSpkStatusCounts = async (
+    params?: { startDate?: string; endDate?: string } | null,
+    token?: string | null,
+) => {
+    const response = await api.get('/tracking-spk/status-counts', {
+        params: params || undefined,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    return (response?.data?.data ?? { BELUM: 0, PROSES: 0, SUDAH: 0 }) as TrackingSpkStatusCounts;
 };

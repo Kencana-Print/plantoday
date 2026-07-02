@@ -31,21 +31,9 @@ import { usePressGuard } from '../../utils/usePressGuard';
 
 import api from '../../services/api';
 import { useAuth } from '../../context/authContext';
+import { THEME } from '../theme';
 
-const THEME = {
-  primary: '#4F46E5',
-  accent: '#06B6D4',
-  ink: '#0F172A',
-  muted: '#64748B',
-  card: '#FFFFFF',
-  soft: '#F1F5F9',
-  line: 'rgba(15,23,42,0.08)',
-  danger: '#EF4444',
-  bgTop: '#F7F9FF',
-  bgBottom: '#FFFFFF',
-  wa: '#22C55E',
-  ok: '#16A34A',
-};
+
 
 const MAX_UPLOAD_BYTES = 1 * 1024 * 1024;
 const COMPRESS_PRESETS = [
@@ -180,6 +168,7 @@ export default function VisitScreen({ navigation, route }: any) {
 
   const [existingVisitId, setExistingVisitId] = useState<number | null>(null);
   const [visitLoaded, setVisitLoaded] = useState(false);
+  const [focusedInput, setFocusedInput] = useState<'customer' | 'note' | 'catatan' | null>(null);
 
   const loadDraftIfAny = async (cusKode: string, ymdTanggal: string) => {
     try {
@@ -658,7 +647,16 @@ export default function VisitScreen({ navigation, route }: any) {
             {/* Customer */}
             <Text style={styles.label}>Customer</Text>
             <View style={styles.row}>
-              <View style={[styles.inputWrap, { flex: 1, marginBottom: 0 }]}>
+              <View
+                style={[
+                  styles.inputWrap,
+                  { flex: 1, marginBottom: 0 },
+                  focusedInput === 'customer' && {
+                    borderColor: THEME.primary,
+                    borderWidth: 1.5,
+                  },
+                ]}
+              >
                 <TextInput
                   value={customer}
                   onChangeText={t => {
@@ -667,6 +665,8 @@ export default function VisitScreen({ navigation, route }: any) {
                     setExistingVisitId(null);
                     setVisitLoaded(false);
                   }}
+                  onFocus={() => setFocusedInput('customer')}
+                  onBlur={() => setFocusedInput(null)}
                   placeholder="Pilih Customer"
                   placeholderTextColor={THEME.muted}
                   style={styles.input}
@@ -826,13 +826,23 @@ export default function VisitScreen({ navigation, route }: any) {
               </TouchableOpacity>
             </View>
 
-            {/* Catatan */}
-            <Text style={styles.label}>Catatan</Text>
-            <View style={[styles.textAreaWrap]}>
+            {/* Keperluan */}
+            <Text style={styles.label}>Keperluan</Text>
+            <View
+              style={[
+                styles.textAreaWrap,
+                focusedInput === 'note' && {
+                  borderColor: THEME.primary,
+                  borderWidth: 1.5,
+                },
+              ]}
+            >
               <TextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder="Tulis catatan..."
+                onFocus={() => setFocusedInput('note')}
+                onBlur={() => setFocusedInput(null)}
+                placeholder="Tulis keperluan..."
                 placeholderTextColor={THEME.muted}
                 multiline
                 numberOfLines={3}
@@ -841,13 +851,23 @@ export default function VisitScreen({ navigation, route }: any) {
               />
             </View>
 
-            {/* Keperluan */}
-            <Text style={styles.label}>Keperluan</Text>
-            <View style={[styles.textAreaWrap]}>
+            {/* Hasil */}
+            <Text style={styles.label}>Hasil</Text>
+            <View
+              style={[
+                styles.textAreaWrap,
+                focusedInput === 'catatan' && {
+                  borderColor: THEME.primary,
+                  borderWidth: 1.5,
+                },
+              ]}
+            >
               <TextInput
                 value={catatan}
                 onChangeText={setCatatan}
-                placeholder="Tulis keperluan..."
+                onFocus={() => setFocusedInput('catatan')}
+                onBlur={() => setFocusedInput(null)}
+                placeholder="Tulis hasil kunjungan..."
                 placeholderTextColor={THEME.muted}
                 multiline
                 numberOfLines={4}
@@ -966,11 +986,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
-    height: 55,
+    height: 45,
     marginBottom: 12,
   },
 
@@ -978,17 +998,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,
-    height: 55,
+    height: 45,
     marginBottom: 12,
   },
 
   leadingIcon: { fontSize: 16, marginRight: 10 },
-  input: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '800' },
-  selectText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '900' },
+  input: { flex: 1, color: THEME.ink, fontSize: 15, fontWeight: '600' },
+  selectText: { flex: 1, color: THEME.ink, fontSize: 14, fontWeight: '600' },
 
   row: {
     flexDirection: 'row',
@@ -1000,32 +1020,32 @@ const styles = StyleSheet.create({
   helper: {
     color: THEME.muted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
     marginTop: -4,
     marginLeft: 4,
   },
   helperOk: {
     color: THEME.ok,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '600',
     marginTop: 6,
     marginLeft: 4,
   },
 
   btnPrimary: {
     marginTop: 14,
-    height: 52,
-    borderRadius: 14,
+    height: 45,
+    borderRadius: 10,
     backgroundColor: THEME.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPrimaryText: { color: '#fff', fontWeight: '900', letterSpacing: 0.4 },
+  btnPrimaryText: { color: '#fff', fontWeight: '700', letterSpacing: 0.4 },
 
   btnSoft: {
-    height: 55,
+    height: 45,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    borderRadius: 10,
     backgroundColor: 'rgba(79,70,229,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(79,70,229,0.18)',
@@ -1034,15 +1054,15 @@ const styles = StyleSheet.create({
   },
   btnSoftText: {
     color: THEME.primary,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 0.4,
     fontSize: 12,
   },
 
   btnAccent: {
     marginTop: 4,
-    height: 50,
-    borderRadius: 14,
+    height: 45,
+    borderRadius: 10,
     backgroundColor: 'rgba(6,182,212,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(6,182,212,0.24)',
@@ -1052,18 +1072,18 @@ const styles = StyleSheet.create({
   },
   btnAccentText: {
     color: THEME.ink,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 0.3,
     fontSize: 12,
   },
 
   btnGhost: { marginTop: 10, alignItems: 'center', paddingVertical: 10 },
-  btnGhostText: { color: THEME.muted, fontWeight: '900' },
+  btnGhostText: { color: THEME.muted, fontWeight: '700' },
 
   photo: {
     width: '100%',
     height: 180,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     marginTop: 6,
@@ -1072,13 +1092,13 @@ const styles = StyleSheet.create({
     color: THEME.muted,
     fontSize: 12,
     marginTop: 8,
-    fontWeight: '800',
+    fontWeight: '600',
   },
 
   photoEmpty: {
     width: '100%',
     height: 120,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     backgroundColor: THEME.soft,
@@ -1092,7 +1112,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: THEME.soft,
-    borderRadius: 15,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
     paddingHorizontal: 12,

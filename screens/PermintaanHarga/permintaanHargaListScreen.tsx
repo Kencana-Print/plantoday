@@ -1,7 +1,14 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   FlatList,
+  Animated,
   BackHandler,
   Modal,
   Platform,
@@ -27,6 +34,7 @@ import {
   PermintaanHargaItem,
 } from '../../services/permintaanHargaApi';
 import { PENAWARAN_SHADOW, PENAWARAN_THEME } from '../Penawaran/penawaranTheme';
+import { COMPANY_STATUS_COLORS } from '../theme';
 
 const THEME = PENAWARAN_THEME;
 
@@ -55,52 +63,160 @@ const formatDate = (ymd: string) => {
 
 const getStatusBadgeStyle = (status: string) => {
   const value = String(status || '').toUpperCase();
-  const withTone = (base: string, text: string) => ({
-    backgroundColor: `${base}1A`,
-    borderColor: base,
-    textColor: text,
-  });
-
-  if (value === 'BELUM') {
-    return withTone('#6B7280', '#374151');
-  }
-  if (value === 'MINTA') {
-    return withTone('#FF0000', '#B00000');
-  }
-  if (value === 'CANCEL') {
-    return withTone('#0000FF', '#0000CC');
-  }
-  if (value === 'WAIT') {
-    return withTone('#008000', '#006400');
-  }
-  if (value === 'DONE' || value === 'SELESAI') {
-    return withTone('#000000', '#111827');
-  }
-  return withTone('#6366F1', THEME.primary);
+  const colors = COMPANY_STATUS_COLORS[value] || COMPANY_STATUS_COLORS.DEFAULT;
+  return {
+    backgroundColor: `${colors.base}1A`,
+    borderColor: colors.base,
+    textColor: colors.text,
+  };
 };
 
-export default function PermintaanHargaListScreen({ navigation }: any) {
+export default function PermintaanHargaListScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
-  const initialRange = useMemo(() => getCurrentMonth(), []);
-  const [items, setItems] = useState<PermintaanHargaItem[]>([]);
+  const initialRange = useMemo(() => {
+    const pMonth = route?.params?.month;
+    const pYear = route?.params?.year;
+    if (pMonth && pYear) {
+      const start = new Date(pYear, pMonth - 1, 1);
+      const end = new Date(pYear, pMonth, 0);
+      const toYmd = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+          d.getDate(),
+        ).padStart(2, '0')}`;
+      return { startDate: toYmd(start), endDate: toYmd(end) };
+    }
+    return getCurrentMonth();
+  }, [route?.params?.month, route?.params?.year]);
+
+  const [rawItems, setRawItems] = useState<PermintaanHargaItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
+
+  useEffect(() => {
+    const pMonth = route?.params?.month;
+    const pYear = route?.params?.year;
+    if (pMonth && pYear) {
+      const start = new Date(pYear, pMonth - 1, 1);
+      const end = new Date(pYear, pMonth, 0);
+      const toYmd = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+          d.getDate(),
+        ).padStart(2, '0')}`;
+      setStartDate(toYmd(start));
+      setEndDate(toYmd(end));
+    }
+  }, [route?.params?.month, route?.params?.year]);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showSearchFab, setShowSearchFab] = useState(false);
   const [openSearchMini, setOpenSearchMini] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [showLegendModal, setShowLegendModal] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(true);
+
+  // Animated values for tooltip
+  const tooltipOpacity = useRef(new Animated.Value(0)).current;
+  const tooltipScale = useRef(new Animated.Value(0.8)).current;
+  const infoPulse = useRef(new Animated.Value(1)).current;
+
+  // Tooltip entrance animation + auto-dismiss
+  useEffect(() => {
+    if (showTooltip) {
+      // Fade-in + bounce
+      Animated.parallel([
+        Animated.timing(tooltipOpacity, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.spring(tooltipScale, {
+          toValue: 1,
+          friction: 5,
+          tension: 80,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Pulse effect on info button
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(infoPulse, {
+            toValue: 1.2,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(infoPulse, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      pulse.start();
+
+      // Auto-dismiss after 5 seconds
+      const timer = setTimeout(() => {
+        dismissTooltip();
+      }, 5000);
+
+      return () => {
+        pulse.stop();
+        clearTimeout(timer);
+      };
+    } else {
+      infoPulse.setValue(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTooltip]);
+
+  const dismissTooltip = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(tooltipOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(tooltipScale, {
+        toValue: 0.8,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowTooltip(false);
+    });
+  }, [tooltipOpacity, tooltipScale]);
+
+  const filteredItems = useMemo(() => {
+    return rawItems.filter(
+      item =>
+        filterStatus === 'all' ||
+        String(item.status).toLowerCase() === filterStatus,
+    );
+  }, [rawItems, filterStatus]);
+
+  const statusCounts = useMemo(() => {
+    const map = { done: 0, minta: 0, wait: 0, belum: 0, cancel: 0 };
+    rawItems.forEach(item => {
+      const st = String(item.status || '').toLowerCase();
+      if (st === 'selesai') {
+        map.done++;
+      } else if (st in map) {
+        map[st as keyof typeof map]++;
+      }
+    });
+    return map;
+  }, [rawItems]);
 
   const loadData = useCallback(
     async (isRefresh = false) => {
       isRefresh ? setRefreshing(true) : setLoading(true);
       try {
         if (!token) {
-          setItems([]);
+          setRawItems([]);
           return;
         }
 
@@ -109,13 +225,12 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
             startDate,
             endDate,
             search: search.trim() || undefined,
-            status: filterStatus === 'all' ? undefined : filterStatus,
-            limit: 100,
+            limit: 300,
             page: 1,
           },
           token,
         );
-        setItems(data);
+        setRawItems(data);
       } catch (err: any) {
         Toast.show({
           type: 'glassError',
@@ -129,7 +244,7 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
         setRefreshing(false);
       }
     },
-    [endDate, search, startDate, token, filterStatus],
+    [endDate, search, startDate, token],
   );
 
   useFocusEffect(
@@ -197,45 +312,6 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
         </View>
       </View>
 
-      <View style={styles.statusLegendWrap}>
-        <View style={styles.statusLegendRow}>
-          <View
-            style={[styles.statusLegendDot, { backgroundColor: '#6B7280' }]}
-          />
-          <Text style={styles.statusLegendText}>
-            = BELUM (Tidak muncul di kalkulasi harga)
-          </Text>
-        </View>
-        <View style={styles.statusLegendRow}>
-          <View
-            style={[styles.statusLegendDot, { backgroundColor: '#FF0000' }]}
-          />
-          <Text style={styles.statusLegendText}>
-            = MINTA (Sedang dimintakan harga ke Finance)
-          </Text>
-        </View>
-        <View style={styles.statusLegendRow}>
-          <View
-            style={[styles.statusLegendDot, { backgroundColor: '#0000FF' }]}
-          />
-          <Text style={styles.statusLegendText}>= CANCEL</Text>
-        </View>
-        <View style={styles.statusLegendRow}>
-          <View
-            style={[styles.statusLegendDot, { backgroundColor: '#008000' }]}
-          />
-          <Text style={styles.statusLegendText}>
-            = WAIT (Sudah diproses, menunggu acc)
-          </Text>
-        </View>
-        <View style={styles.statusLegendRow}>
-          <View
-            style={[styles.statusLegendDot, { backgroundColor: '#000000' }]}
-          />
-          <Text style={styles.statusLegendText}>= DONE</Text>
-        </View>
-      </View>
-
       <View style={styles.headerCard}>
         <View style={styles.dateRow}>
           <TouchableOpacity
@@ -299,47 +375,121 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
         </TouchableOpacity>
 
         <View style={styles.chipRow}>
+          <View style={{ position: 'relative', zIndex: 10 }}>
+            <Animated.View style={{ transform: [{ scale: infoPulse }] }}>
+              <TouchableOpacity
+                onPress={() => {
+                  dismissTooltip();
+                  setShowLegendModal(true);
+                }}
+                activeOpacity={0.7}
+                style={styles.infoChip}
+              >
+                <MaterialIcons
+                  name="info-outline"
+                  size={16}
+                  color={THEME.primary}
+                />
+              </TouchableOpacity>
+            </Animated.View>
+
+            {showTooltip && (
+              <Animated.View
+                style={[
+                  styles.tooltipBox,
+                  {
+                    opacity: tooltipOpacity,
+                    transform: [{ scale: tooltipScale }],
+                  },
+                ]}
+              >
+                <View style={styles.tooltipArrow} />
+                <View style={styles.tooltipIconWrap}>
+                  <MaterialIcons name="touch-app" size={14} color="#FFFFFF" />
+                </View>
+                <Text style={styles.tooltipText}>
+                  Klik untuk melihat keterangan status
+                </Text>
+                <TouchableOpacity
+                  onPress={dismissTooltip}
+                  style={styles.tooltipClose}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons
+                    name="close"
+                    size={12}
+                    color="rgba(255,255,255,0.5)"
+                  />
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.chipScroll}
           >
-            {(['done', 'minta', 'wait', 'belum', 'cancel'] as const).map(
+            {(['all', 'done', 'minta', 'wait', 'belum', 'cancel'] as const).map(
               opt => {
                 const active = filterStatus === opt;
-                const label =
-                  opt === 'done'
-                    ? '⚫ Done'
+                const count =
+                  opt === 'all' ? rawItems.length : statusCounts[opt];
+                const getDotColor = (): string | undefined => {
+                  if (opt === 'done') return '#000000';
+                  if (opt === 'minta') return '#FF0000';
+                  if (opt === 'wait') return '#008000';
+                  if (opt === 'belum') return '#6B7280';
+                  if (opt === 'cancel') return '#0000FF';
+                  return undefined;
+                };
+                const dotColor = getDotColor();
+                const labelText =
+                  opt === 'all'
+                    ? `Semua (${count})`
+                    : opt === 'done'
+                    ? `Done (${count})`
                     : opt === 'minta'
-                    ? '🔴 Minta'
+                    ? `Minta (${count})`
                     : opt === 'wait'
-                    ? '🟢 Wait'
+                    ? `Wait (${count})`
                     : opt === 'belum'
-                    ? '⚪ Belum'
-                    : '🔵 Cancel';
+                    ? `Belum (${count})`
+                    : `Cancel (${count})`;
                 return (
                   <TouchableOpacity
                     key={`status-${opt}`}
                     style={[styles.chipItem, active && styles.chipItemActive]}
                     activeOpacity={0.8}
                     onPress={() =>
-                      setFilterStatus(prev => (prev === opt ? 'all' : opt))
+                      setFilterStatus(prev =>
+                        opt === 'all' ? 'all' : prev === opt ? 'all' : opt,
+                      )
                     }
                   >
-                    <Text
-                      style={[
-                        styles.chipLabel,
-                        active && styles.chipLabelActive,
-                      ]}
-                    >
-                      {label}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {opt === 'all' ? (
+                        <MaterialIcons
+                          name="format-list-bulleted"
+                          size={14}
+                          color={active ? THEME.primary : THEME.muted}
+                        />
+                      ) : (
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
+                      )}
+                      <Text
+                        style={[
+                          styles.chipLabel,
+                          active && styles.chipLabelActive,
+                        ]}
+                      >
+                        {labelText}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 );
-              },
+              }
             )}
           </ScrollView>
-          <Text style={styles.countBadge}>{items.length}</Text>
         </View>
       </View>
     </View>
@@ -362,7 +512,7 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
       />
 
       <FlatList
-        data={loading ? [] : items}
+        data={loading ? [] : filteredItems}
         keyExtractor={(item, idx) => `${item.nomor}-${idx}`}
         ListHeaderComponent={ListHeader}
         contentContainerStyle={[
@@ -534,6 +684,106 @@ export default function PermintaanHargaListScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={showLegendModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLegendModal(false)}
+      >
+        <View style={styles.legendModalBackdrop}>
+          <View style={styles.legendModalCard}>
+            <View style={styles.legendModalHeader}>
+              <Text style={styles.legendModalTitle}>
+                Info Status Permintaan Harga
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowLegendModal(false)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="close" size={22} color={THEME.muted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.legendModalContent}>
+              <View style={styles.legendModalRow}>
+                <View
+                  style={[
+                    styles.legendModalDot,
+                    { backgroundColor: '#6B7280' },
+                  ]}
+                />
+                <View style={styles.legendModalTextWrap}>
+                  <Text style={styles.legendModalStatusName}>BELUM</Text>
+                  <Text style={styles.legendModalStatusDesc}>
+                    Tidak muncul di kalkulasi harga
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.legendModalRow}>
+                <View
+                  style={[
+                    styles.legendModalDot,
+                    { backgroundColor: '#FF0000' },
+                  ]}
+                />
+                <View style={styles.legendModalTextWrap}>
+                  <Text style={styles.legendModalStatusName}>MINTA</Text>
+                  <Text style={styles.legendModalStatusDesc}>
+                    Sedang dimintakan harga ke Finance
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.legendModalRow}>
+                <View
+                  style={[
+                    styles.legendModalDot,
+                    { backgroundColor: '#008000' },
+                  ]}
+                />
+                <View style={styles.legendModalTextWrap}>
+                  <Text style={styles.legendModalStatusName}>WAIT</Text>
+                  <Text style={styles.legendModalStatusDesc}>
+                    Sudah diproses, menunggu acc
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.legendModalRow}>
+                <View
+                  style={[
+                    styles.legendModalDot,
+                    { backgroundColor: '#000000' },
+                  ]}
+                />
+                <View style={styles.legendModalTextWrap}>
+                  <Text style={styles.legendModalStatusName}>DONE</Text>
+                  <Text style={styles.legendModalStatusDesc}>
+                    Permintaan harga telah selesai diproses
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.legendModalRow}>
+                <View
+                  style={[
+                    styles.legendModalDot,
+                    { backgroundColor: '#0000FF' },
+                  ]}
+                />
+                <View style={styles.legendModalTextWrap}>
+                  <Text style={styles.legendModalStatusName}>CANCEL</Text>
+                  <Text style={styles.legendModalStatusDesc}>
+                    Permintaan harga dibatalkan
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -567,30 +817,66 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  statusLegendWrap: {
-    marginBottom: 10,
-    backgroundColor: '#DBEAFE',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 6,
+  legendModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
   },
-  statusLegendRow: {
+  legendModalCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  legendModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.line,
+    paddingBottom: 12,
+    marginBottom: 16,
   },
-  statusLegendDot: {
-    width: 14,
-    height: 14,
-    marginRight: 8,
+  legendModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: THEME.ink,
   },
-  statusLegendText: {
-    color: '#0F172A',
-    fontSize: 12,
-    fontWeight: '600',
+  legendModalContent: {
+    gap: 14,
+  },
+  legendModalRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  legendModalDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginTop: 4,
+    marginRight: 12,
+  },
+  legendModalTextWrap: {
     flex: 1,
+  },
+  legendModalStatusName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: THEME.ink,
+  },
+  legendModalStatusDesc: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: THEME.muted,
+    marginTop: 1,
   },
   headerCard: {
     backgroundColor: THEME.card,
@@ -824,5 +1110,64 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 18,
     paddingHorizontal: 6,
+  },
+  infoChip: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: `${THEME.primary}30`,
+    backgroundColor: `${THEME.primary}0D`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tooltipBox: {
+    position: 'absolute',
+    bottom: 44,
+    left: -8,
+    backgroundColor: THEME.primary,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: THEME.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    zIndex: 999,
+    minWidth: 180,
+  },
+  tooltipIconWrap: {
+    marginRight: 6,
+  },
+  tooltipText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    marginRight: 8,
+    flex: 1,
+    letterSpacing: 0.2,
+  },
+  tooltipClose: {
+    padding: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  tooltipArrow: {
+    position: 'absolute',
+    bottom: -6,
+    left: 20,
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderTopWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: THEME.primary,
   },
 });

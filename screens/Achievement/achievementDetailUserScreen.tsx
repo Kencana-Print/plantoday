@@ -1,6 +1,5 @@
 /* eslint-disable react-native/no-inline-styles */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +7,7 @@ import {
   TouchableOpacity,
   StatusBar,
   Platform,
+  ScrollView,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -16,6 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/appNavigator';
 import CircularProgress from '../Achievement/circularProgress';
+import { LoadingSkeleton } from '../../components/loadingSkeleton';
+import api from '../../services/api';
+import { useAuth } from '../../context/authContext';
 
 const THEME = {
   primary: '#4F46E5',
@@ -47,11 +50,10 @@ const MONTH_LABELS = [
 ];
 
 const rupiahFull = (n: number) =>
-  `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
-const percent2 = (n?: number) => `${Number(n || 0).toFixed(2)}%`;
-
+  `Rp.${Number(n || 0).toLocaleString('id-ID')}`;
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
+
 const progressPct = (realisasi: number, target: number) =>
   !target ? 0 : clamp((realisasi / target) * 100, 0, 500);
 
@@ -60,25 +62,26 @@ const fmtMonthYear = (m: number, y: number) => {
   return `${label} ${y}`;
 };
 
+const formatDate = (ymd?: string) => {
+  if (!ymd) return '-';
+  const clean = String(ymd).trim().slice(0, 10);
+  const parts = clean.split('-');
+  if (parts.length !== 3) return ymd;
+  const [y, m, d] = parts;
+  return `${d}-${m}-${y}`;
+};
+
 type Nav = NativeStackNavigationProp<
   RootStackParamList,
   'AchievementDetailUserRange'
 >;
 type R = RouteProp<RootStackParamList, 'AchievementDetailUserRange'>;
 
-function Row({ label, value, valueStyle }: any) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.key}>{label}</Text>
-      <Text style={[styles.val, valueStyle]}>{value}</Text>
-    </View>
-  );
-}
-
 export default function AchievementDetailUserRangeScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<R>();
   const insets = useSafeAreaInsets();
+  const { token } = useAuth();
 
   const {
     nama,
@@ -89,7 +92,11 @@ export default function AchievementDetailUserRangeScreen() {
     toMonth,
     target: targetParam,
     realisasi: realisasiParam,
-  } = route.params as any;
+    ach: achParam,
+  } = route.params;
+
+  const [loading, setLoading] = useState(false);
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
 
   const periodLabel = useMemo(() => {
     if (!fromYear || !fromMonth || !toYear || !toMonth) return '-';
@@ -99,6 +106,45 @@ export default function AchievementDetailUserRangeScreen() {
     )}`;
   }, [fromMonth, fromYear, toMonth, toYear]);
 
+  useEffect(() => {
+    async function fetchData() {
+      if (!token || !route.params.kode) return;
+      setLoading(true);
+      try {
+        const fromVal = `${fromYear}-${String(fromMonth).padStart(2, '0')}`;
+        const toVal = `${toYear}-${String(toMonth).padStart(2, '0')}`;
+        const res = await api.get(
+          `/achievement/omset/month/${route.params.kode}`,
+          {
+            params: {
+              from: fromVal,
+              to: toVal,
+            },
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+        if (res.data?.success) {
+          setMonthlyData(res.data?.data || []);
+        }
+      } catch (err) {
+        console.error('FETCH MONTHLY ACHIEVEMENT DETAILS ERROR:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [token, route.params.kode, fromYear, fromMonth, toYear, toMonth]);
+
+  const allSpkList = useMemo(() => {
+    const list = monthlyData.flatMap(m => m.detail_spk || []);
+    // Diurutkan terbaru paling atas
+    return list.sort((a, b) => {
+      const dateA = a.spk_tanggal ? new Date(a.spk_tanggal).getTime() : 0;
+      const dateB = b.spk_tanggal ? new Date(b.spk_tanggal).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [monthlyData]);
+
   // kalau dari list sudah bawa agregat, pakai itu
   const target = Number(targetParam || 0);
   const realisasi = Number(realisasiParam || 0);
@@ -107,12 +153,13 @@ export default function AchievementDetailUserRangeScreen() {
 
   const selisih = realisasi - target;
   const prog = progressPct(realisasi, target);
+  const ach = typeof achParam === 'number' ? achParam : prog;
   const isMet = realisasi >= target && target > 0;
 
   return (
     <LinearGradient
       colors={[THEME.bgTop, THEME.bgBottom]}
-      style={[styles.container, { paddingBottom: insets.bottom + 20 }]}
+      style={[styles.container, { paddingBottom: insets.bottom + 10 }]}
     >
       <StatusBar
         barStyle="dark-content"
@@ -120,65 +167,196 @@ export default function AchievementDetailUserRangeScreen() {
         translucent
       />
 
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Detail Achievement</Text>
-        <Text style={styles.subTitle} numberOfLines={1}>
-          {nama} • {jabatan}
-        </Text>
-        <Text style={styles.periodText} numberOfLines={1}>
-          {periodLabel}
-        </Text>
-      </View>
-
-      {/* CARD */}
-      <View style={styles.card}>
-        {/* HERO PROGRESS */}
-        <Text style={styles.heroLabel}>Progress Pencapaian</Text>
-        {!missing ? (
-          <View style={{ alignItems: 'center', marginVertical: 16 }}>
-            <CircularProgress
-              progress={prog}
-              color={isMet ? THEME.ok : THEME.accent}
-              textColor={THEME.ink}
-            />
-
-            <View style={styles.chip}>
-              <MaterialIcons
-                name={isMet ? 'check-circle' : 'schedule'}
-                size={14}
-                color={isMet ? THEME.ok : THEME.warn}
-              />
-              <Text
-                style={[
-                  styles.chipText,
-                  { color: isMet ? THEME.ok : THEME.warn },
-                ]}
-              >
-                {isMet ? 'TARGET TERCAPAI' : 'BELUM TERCAPAI'}
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <Text style={styles.heroValue}>No Data</Text>
-        )}
-
-        <View style={styles.line} />
-
-        {/* NILAI UTAMA */}
-        <View style={styles.moneyBlock}>
-          <Row label="Periode" value={periodLabel} />
-          <Row label="Total Target" value={rupiahFull(target)} />
-          <Row label="Total Realisasi" value={rupiahFull(realisasi)} />
-          <Row
-            label="Selisih"
-            value={rupiahFull(selisih)}
-            valueStyle={selisih < 0 ? styles.negative : styles.positive}
-          />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 16 }}
+      >
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Detail Achievement</Text>
+          <Text style={styles.subTitle} numberOfLines={1}>
+            {nama} • {jabatan}
+          </Text>
         </View>
 
-        <View style={styles.line} />
-      </View>
+        {/* CARD */}
+        <View style={styles.card}>
+          {/* PROGRESS + RINGKASAN 2-KOLOM */}
+          <View style={styles.progressRow}>
+            {/* KIRI: Chart */}
+            <View style={styles.progressLeft}>
+              {!missing ? (
+                <CircularProgress
+                  size={90}
+                  strokeWidth={9}
+                  progress={ach}
+                  color={isMet ? THEME.ok : THEME.accent}
+                  textColor={THEME.ink}
+                />
+              ) : (
+                <Text style={styles.noDataText}>No Data</Text>
+              )}
+              <View style={[styles.chip, { marginTop: 8 }]}>
+                <MaterialIcons
+                  name={isMet ? 'check-circle' : 'schedule'}
+                  size={12}
+                  color={isMet ? THEME.ok : THEME.warn}
+                />
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: isMet ? THEME.ok : THEME.warn },
+                  ]}
+                >
+                  {isMet ? 'TERCAPAI' : 'BELUM'}
+                </Text>
+              </View>
+            </View>
+
+            {/* KANAN: Ringkasan */}
+            <View style={styles.progressRight}>
+              <Text style={styles.summaryTitle} numberOfLines={2}>
+                {periodLabel}
+              </Text>
+
+              <View style={styles.summaryDivider} />
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Target</Text>
+                <Text style={styles.summaryValue}>{rupiahFull(target)}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Realisasi</Text>
+                <Text style={styles.summaryValue}>{rupiahFull(realisasi)}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Total SPK</Text>
+                <Text style={styles.summaryValue}>
+                  {loading ? '...' : `${allSpkList.length} SPK`}
+                </Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Selisih</Text>
+                <Text
+                  style={[
+                    styles.summaryValue,
+                    selisih < 0 ? styles.negative : styles.positive,
+                  ]}
+                >
+                  {rupiahFull(selisih)}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.line} />
+
+          {/* DAFTAR SPK REALISASI */}
+          <View style={styles.spkSection}>
+            <Text style={styles.sectionTitle}>Daftar Realisasi SPK</Text>
+            {loading ? (
+              <View style={{ gap: 10 }}>
+                {[1, 2, 3].map(item => (
+                  <View style={styles.spkCard} key={`spk-skel-${item}`}>
+                    <View style={styles.spkHeader}>
+                      <LoadingSkeleton
+                        height={14}
+                        width={100}
+                        color="rgba(148,163,184,0.18)"
+                      />
+                      <LoadingSkeleton
+                        height={12}
+                        width={80}
+                        color="rgba(148,163,184,0.18)"
+                      />
+                    </View>
+                    <LoadingSkeleton
+                      height={14}
+                      width="70%"
+                      color="rgba(148,163,184,0.18)"
+                      style={{ marginVertical: 6 }}
+                    />
+                    <View style={styles.spkFooter}>
+                      <LoadingSkeleton
+                        height={12}
+                        width={120}
+                        color="rgba(148,163,184,0.18)"
+                      />
+                      <LoadingSkeleton
+                        height={12}
+                        width={60}
+                        color="rgba(148,163,184,0.18)"
+                      />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : allSpkList.length === 0 ? (
+              <Text style={styles.emptyText}>
+                Tidak ada SPK terbit di periode ini
+              </Text>
+            ) : (
+              allSpkList.map((spk, idx) => (
+                <View style={styles.spkCard} key={`${spk.spk_nomor}-${idx}`}>
+                  <View style={styles.spkHeader}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <Text style={styles.spkNo}>{spk.spk_nomor}</Text>
+                      {spk.spk_close === true ||
+                      spk.spk_close === 1 ||
+                      spk.spk_close === '1' ? (
+                        <View
+                          style={[styles.statusBadgeCompact, styles.badgeClose]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusBadgeTextCompact,
+                              styles.badgeCloseText,
+                            ]}
+                          >
+                            CLOSE
+                          </Text>
+                        </View>
+                      ) : (
+                        <View
+                          style={[styles.statusBadgeCompact, styles.badgeOpen]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusBadgeTextCompact,
+                              styles.badgeOpenText,
+                            ]}
+                          >
+                            OPEN
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.spkMeta}>
+                      {formatDate(spk.spk_tanggal?.slice(0, 10))}
+                    </Text>
+                  </View>
+                  <Text style={styles.spkName}>{spk.spk_nama || '-'}</Text>
+                  <Text style={styles.spkCustomer}>
+                    {spk.customer || spk.customer_nama || spk.cus_nama || '-'}
+                  </Text>
+                  <View style={styles.spkFooter}>
+                    <Text style={styles.spkMeta}>
+                      {rupiahFull(spk.spk_harga)} • Order: {spk.spk_jumlah} Pcs
+                    </Text>
+                    <Text style={styles.spkValue}>{rupiahFull(spk.nilai)}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+      </ScrollView>
 
       {/* BUTTON KEMBALI */}
       <TouchableOpacity
@@ -198,7 +376,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: Platform.OS === 'android' ? 54 : 18,
     paddingHorizontal: 20,
-    paddingBottom: 20,
   },
 
   header: { marginBottom: 12, alignItems: 'center' },
@@ -210,93 +387,179 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subTitle: {
-    color: THEME.muted,
-    fontSize: 12,
+    color: THEME.ink,
+    fontSize: 17,
     fontWeight: '800',
     marginTop: 2,
     textAlign: 'center',
   },
-  periodText: {
-    color: THEME.muted,
-    fontSize: 12,
-    fontWeight: '900',
-    marginTop: 6,
-    textAlign: 'center',
-  },
-
   card: {
     backgroundColor: THEME.card,
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: THEME.line,
-    flexGrow: 1,
+    marginBottom: 8,
   },
-
-  heroLabel: { color: THEME.muted, fontSize: 12, fontWeight: '900' },
-  heroValue: {
-    color: THEME.ink,
-    fontSize: 28,
-    fontWeight: '900',
-    marginVertical: 8,
-  },
-
-  progressTrack: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.08)',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,182,212,0.75)',
-  },
-
-  chip: {
-    marginTop: 10,
+  progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 14,
+  },
+  progressLeft: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressRight: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  summaryTitle: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.1,
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: THEME.line,
+    marginVertical: 8,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  summaryLabel: {
+    color: THEME.muted,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  summaryValue: {
+    color: THEME.ink,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  noDataText: {
+    color: THEME.muted,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: THEME.line,
     backgroundColor: THEME.soft,
   },
-  chipText: { fontSize: 11, fontWeight: '900' },
+  chipText: { fontSize: 10, fontWeight: '900' },
 
   line: { height: 1, backgroundColor: THEME.line, marginVertical: 14 },
-
-  moneyBlock: {
-    borderRadius: 14,
-    padding: 12,
-    backgroundColor: 'rgba(241,245,249,0.55)',
-    borderWidth: 1,
-    borderColor: THEME.line,
-  },
-
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    gap: 12,
-  },
-  key: { color: THEME.muted, fontSize: 12, fontWeight: '900', flex: 1 },
-  val: {
-    color: THEME.ink,
-    fontSize: 12,
-    fontWeight: '900',
-    flex: 1,
-    textAlign: 'right',
-  },
 
   positive: { color: THEME.ok },
   negative: { color: '#DC2626' },
 
+  spkSection: {
+    marginTop: 6,
+  },
+  sectionTitle: {
+    color: THEME.ink,
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 10,
+    letterSpacing: 0.1,
+  },
+  emptyText: {
+    color: THEME.muted,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingVertical: 20,
+    backgroundColor: 'rgba(241,245,249,0.55)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.line,
+  },
+  spkCard: {
+    backgroundColor: THEME.card,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    marginBottom: 10,
+  },
+  spkHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  spkNo: {
+    color: THEME.primary,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  spkValue: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  statusBadgeCompact: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  badgeClose: {
+    backgroundColor: '#10B9811A',
+    borderColor: '#10B981',
+  },
+  badgeOpen: {
+    backgroundColor: '#EF44441A',
+    borderColor: '#EF4444',
+  },
+  statusBadgeTextCompact: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  badgeCloseText: {
+    color: '#047857',
+  },
+  badgeOpenText: {
+    color: '#B91C1C',
+  },
+  spkName: {
+    color: THEME.ink,
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  spkCustomer: {
+    color: THEME.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  spkFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  spkMeta: {
+    color: THEME.muted,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
   backButton: {
-    marginTop: 14,
+    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
