@@ -589,7 +589,7 @@ export default function VisitPlanGabunganScreen({ navigation }: any) {
         </TouchableOpacity>
       );
     },
-    [openEditFab, selectedItem, showEditFab],
+    [openEditFab, selectedItem, showEditFab, skeletonPulse],
   );
 
   // ===== header =====

@@ -565,7 +565,7 @@ export default function VisitGabunganScreen({ navigation }: any) {
         </TouchableOpacity>
       );
     },
-    [openEditFab, selectedItem, showEditFab],
+    [openEditFab, selectedItem, showEditFab, skeletonPulse],
   );
 
   const ListHeader = (
