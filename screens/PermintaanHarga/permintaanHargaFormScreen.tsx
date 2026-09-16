@@ -34,6 +34,8 @@ import {
   getTambahanOptionsApi,
   getCetakOptionsApi,
   calculateGarmenApi,
+  getCustomerSoHistoryApi,
+  CustomerSoHistoryItem,
 } from '../../services/permintaanHargaApi';
 import {
   launchCamera,
@@ -74,8 +76,33 @@ const formatDateOrderDisplay = (val: string) => {
 const onlyDigits = (value: string) =>
   String(value || '').replace(/[^0-9]/g, '');
 
+const formatNumberDisplay = (value: string | number) => {
+  if (value === null || value === undefined || value === '') return '0';
+  const num =
+    typeof value === 'number'
+      ? value
+      : Number(String(value).replace(/,/g, '.'));
+  if (!Number.isFinite(num)) return '0';
+  if (Number.isInteger(num)) {
+    return new Intl.NumberFormat('id-ID').format(num);
+  }
+  return new Intl.NumberFormat('id-ID', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(num);
+};
+
 const formatThousandsId = (value: string | number) => {
-  const cleaned = onlyDigits(String(value ?? ''));
+  if (value === null || value === undefined || value === '') return '0';
+  const rawStr = String(value).trim();
+  const num = typeof value === 'number' ? value : Number(rawStr);
+  if (!Number.isNaN(num) && !Number.isInteger(num)) {
+    return new Intl.NumberFormat('id-ID', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(num);
+  }
+  const cleaned = onlyDigits(rawStr);
   if (!cleaned) return '0';
   return new Intl.NumberFormat('id-ID').format(Number(cleaned));
 };
@@ -219,7 +246,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       user?.sales_kode ||
       user?.sal_kode ||
       user?.kode_sales ||
-      user?.kode ||
+      (user as any)?.kode ||
       '',
   );
   const [mh_sal_kode, _setMhSalKode] = useState(initialSalesKode);
@@ -240,6 +267,12 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [mh_harga, setMhHarga] = useState(
     initial?.mh_harga ? String(initial.mh_harga) : '',
   );
+  const [mh_ongkir, setMhOngkir] = useState(
+    initial?.mh_ongkir ? String(initial.mh_ongkir) : '',
+  );
+  const [showOngkirPopover, setShowOngkirPopover] = useState<boolean>(false);
+  const [showConfirmSubmitModal, setShowConfirmSubmitModal] =
+    useState<boolean>(false);
   const [_mh_budget, setMhBudget] = useState(
     initial?.mh_budget ? String(initial.mh_budget) : '',
   );
@@ -423,7 +456,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
         user?.sales_kode ||
         user?.sal_kode ||
         user?.kode_sales ||
-        user?.kode ||
+        (user as any)?.kode ||
         '';
       if (resolved) {
         _setMhSalKode(String(resolved));
@@ -478,6 +511,75 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     setShowCustomerModal(false);
   };
 
+  const [alasanPengajuan, setAlasanPengajuan] = useState<string>(() => {
+    const rawKet = String(initial?.mh_ket_kalkulasi || '');
+    const match = rawKet.match(/\[ALASAN:\s*([^\]]+)\]/i);
+    return match ? match[1].trim() : '';
+  });
+  const [customerSoList, setCustomerSoList] = useState<CustomerSoHistoryItem[]>(
+    [],
+  );
+  const [loadingSoHistory, setLoadingSoHistory] = useState<boolean>(false);
+  const [isSoHistoryExpanded, setIsSoHistoryExpanded] = useState<boolean>(true);
+  const [soSearchKeyword, setSoSearchKeyword] = useState<string>('');
+
+  const filteredCustomerSoList = useMemo(() => {
+    if (!soSearchKeyword.trim()) return customerSoList;
+    const q = soSearchKeyword.toLowerCase().trim();
+    return customerSoList.filter(so => {
+      const matchNomor = (so.so_nomor || '').toLowerCase().includes(q);
+      const matchNama = (so.so_nama || so.so_nama2 || '')
+        .toLowerCase()
+        .includes(q);
+      const matchKain = (so.so_kain || '').toLowerCase().includes(q);
+      const matchUkuran = (so.so_ukuran || '').toLowerCase().includes(q);
+      const matchDivisi = (so.divisi_nama || '').toLowerCase().includes(q);
+      const matchKet = (so.so_keterangan || '').toLowerCase().includes(q);
+      const matchFinishing = (so.so_finishing || '').toLowerCase().includes(q);
+      return (
+        matchNomor ||
+        matchNama ||
+        matchKain ||
+        matchUkuran ||
+        matchDivisi ||
+        matchKet ||
+        matchFinishing
+      );
+    });
+  }, [customerSoList, soSearchKeyword]);
+
+  const fetchCustomerSoHistory = useCallback(
+    async (cusKode: string) => {
+      if (!cusKode) {
+        setCustomerSoList([]);
+        return;
+      }
+      setLoadingSoHistory(true);
+      try {
+        const res = await getCustomerSoHistoryApi(
+          cusKode,
+          { divisi: 'SEMUA', q: '', page: 1, limit: 20 },
+          token,
+        );
+        setCustomerSoList(res?.data || []);
+      } catch (err) {
+        console.log('[PermintaanHargaForm] fetchCustomerSoHistory err:', err);
+        setCustomerSoList([]);
+      } finally {
+        setLoadingSoHistory(false);
+      }
+    },
+    [token],
+  );
+
+  useEffect(() => {
+    if (mh_cus_kode) {
+      fetchCustomerSoHistory(mh_cus_kode);
+    } else {
+      setCustomerSoList([]);
+    }
+  }, [mh_cus_kode, fetchCustomerSoHistory]);
+
   // Engine Kalkulasi State (Langkah 2)
   const [spandukMetode, setSpandukMetode] = useState<'MANUAL' | 'MACHINE'>(
     'MANUAL',
@@ -496,7 +598,24 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [mmtBahanKode, setMmtBahanKode] = useState<string>('260');
   const [mmtToppingKode, setMmtToppingKode] = useState<string>('');
   const [mmtToppingQty, _setMmtToppingQty] = useState<string>('1');
-  const [mmtIsNetto, setMmtIsNetto] = useState<boolean>(false);
+  // Ekstraksi alasan netto bila sedang edit / review dari initial data
+  const initialNettoMatch = useMemo(() => {
+    const rawKet = String(initial?.mh_ket_kalkulasi || '');
+    const m =
+      rawKet.match(/\[NETTO:\s*([^\]]+)\]/i) ||
+      rawKet.match(/Netto\s*-\s*Alasan:\s*([^);]+)/i);
+    return m ? m[1].trim() : '';
+  }, [initial?.mh_ket_kalkulasi]);
+
+  const [mmtAlasanNetto, setMmtAlasanNetto] =
+    useState<string>(initialNettoMatch);
+  const [mmtIsNetto, setMmtIsNetto] = useState<boolean>(
+    Boolean(
+      initialNettoMatch ||
+        (initial?.mh_ket_kalkulasi &&
+          String(initial.mh_ket_kalkulasi).toUpperCase().includes('NETTO')),
+    ),
+  );
   const [mmtResult, setMmtResult] = useState<any>(null);
   const [mmtLoading, setMmtLoading] = useState<boolean>(false);
   const [showMmtStrataTabel, setShowMmtStrataTabel] = useState<boolean>(false);
@@ -591,20 +710,47 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       garmenCalculatedParams !== currentGarmenParamsKey,
   );
 
-  // Kategori & Pilihan Bahan MMT Dinamis dari Master Database
-  const availableSpandukKain = useMemo(() => {
+  // Kategori & Pilihan Bahan Spanduk & MMT Dinamis dari Master Database
+  const availableSpandukMetode = useMemo(() => {
     if (masterOptions?.spanduk && Array.isArray(masterOptions.spanduk)) {
       const list = Array.from(
         new Set(
           masterOptions.spanduk
+            .map((s: any) =>
+              String(s.metode || '')
+                .trim()
+                .toUpperCase(),
+            )
+            .filter(Boolean),
+        ),
+      );
+      if (list.length > 0) return list;
+    }
+    return ['MANUAL', 'MACHINE'];
+  }, [masterOptions?.spanduk]);
+
+  const availableSpandukKain = useMemo(() => {
+    if (masterOptions?.spanduk && Array.isArray(masterOptions.spanduk)) {
+      const filtered = masterOptions.spanduk.filter(
+        (s: any) =>
+          String(s.metode || '')
+            .trim()
+            .toUpperCase() === spandukMetode.toUpperCase(),
+      );
+      const list = Array.from(
+        new Set(
+          filtered
             .map((s: any) => String(s.jenis_kain || '').trim())
             .filter(Boolean),
         ),
       );
       if (list.length > 0) return list;
     }
+    if (spandukMetode === 'MACHINE') {
+      return ['POLYESTER 50/36', 'OPTIC 70/40'];
+    }
     return ['POLYESTER 50/36', 'OPTIC 70/40', 'TC 60/44'];
-  }, [masterOptions?.spanduk]);
+  }, [masterOptions?.spanduk, spandukMetode]);
 
   const availableSpandukLebar = useMemo(() => {
     const selectedKain = (
@@ -618,6 +764,9 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     if (masterOptions?.spanduk && Array.isArray(masterOptions.spanduk)) {
       const filtered = masterOptions.spanduk.filter(
         (s: any) =>
+          String(s.metode || '')
+            .trim()
+            .toUpperCase() === spandukMetode.toUpperCase() &&
           String(s.jenis_kain || '')
             .trim()
             .toUpperCase() === selectedKain,
@@ -632,7 +781,68 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       if (lebars.length > 0) return lebars;
     }
     return [90, 115];
-  }, [masterOptions?.spanduk, spandukJenisKain, mh_kain, availableSpandukKain]);
+  }, [
+    masterOptions?.spanduk,
+    spandukMetode,
+    spandukJenisKain,
+    mh_kain,
+    availableSpandukKain,
+  ]);
+
+  const handleSelectSpandukMetode = (metode: 'MANUAL' | 'MACHINE') => {
+    setSpandukMetode(metode);
+    if (masterOptions?.spanduk && Array.isArray(masterOptions.spanduk)) {
+      const filteredKain = Array.from(
+        new Set(
+          masterOptions.spanduk
+            .filter(
+              (s: any) =>
+                String(s.metode || '')
+                  .trim()
+                  .toUpperCase() === metode.toUpperCase(),
+            )
+            .map((s: any) => String(s.jenis_kain || '').trim())
+            .filter(Boolean),
+        ),
+      );
+      let targetKain = spandukJenisKain;
+      if (filteredKain.length > 0) {
+        const exists = filteredKain.some(
+          k => k.toUpperCase() === targetKain.toUpperCase(),
+        );
+        if (!exists) {
+          targetKain = filteredKain[0];
+          setSpandukJenisKain(targetKain);
+          setMhKain(targetKain);
+        }
+      }
+
+      const filteredLebar = Array.from(
+        new Set(
+          masterOptions.spanduk
+            .filter(
+              (s: any) =>
+                String(s.metode || '')
+                  .trim()
+                  .toUpperCase() === metode.toUpperCase() &&
+                String(s.jenis_kain || '')
+                  .trim()
+                  .toUpperCase() === targetKain.toUpperCase(),
+            )
+            .map((s: any) => Number(s.lebar))
+            .filter((l: number) => l > 0),
+        ),
+      ).sort((a: number, b: number) => a - b);
+
+      if (filteredLebar.length > 0) {
+        const currentLebar = toNumDecimal(mh_lebar) || spandukLebar;
+        if (!filteredLebar.includes(currentLebar)) {
+          setSpandukLebar(filteredLebar[0]);
+          setMhLebar(String(filteredLebar[0]));
+        }
+      }
+    }
+  };
 
   const handleSelectSpandukKain = (kain: string) => {
     setSpandukJenisKain(kain);
@@ -640,6 +850,9 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     if (masterOptions?.spanduk && Array.isArray(masterOptions.spanduk)) {
       const filtered = masterOptions.spanduk.filter(
         (s: any) =>
+          String(s.metode || '')
+            .trim()
+            .toUpperCase() === spandukMetode.toUpperCase() &&
           String(s.jenis_kain || '')
             .trim()
             .toUpperCase() === kain.trim().toUpperCase(),
@@ -925,6 +1138,16 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       if (numPanjang <= 0 || numQty <= 0) return;
 
       const activeMetode = customMetode || spandukMetode || 'MANUAL';
+      if (activeMetode === 'MANUAL' && numQty < 100) {
+        Toast.show({
+          type: 'glassError',
+          text1: 'Minimal Order Cetak Manual',
+          text2:
+            'Cetak Spanduk Manual minimal 100 pcs. Silakan pilih metode Cetak Machine.',
+        });
+        return;
+      }
+
       const activeLebar =
         customLebar || (numLebar > 0 ? numLebar : spandukLebar) || 90;
       const activeKain =
@@ -1018,9 +1241,14 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
           setMhHarga('0');
           setMhBudget('0');
           setMhHargaKalkulasi(finalHargaMmt);
-          const mmtSpec = `MMT ${mmtKategori} ${mmtBahanKode}${
-            activeNetto ? ' (Netto)' : ''
-          }${res.topping ? ` + Top: ${res.topping.nama}` : ''}`;
+          const nettoSpec = activeNetto
+            ? mmtAlasanNetto.trim()
+              ? ` (Netto - Alasan: ${mmtAlasanNetto.trim()})`
+              : ' (Netto)'
+            : '';
+          const mmtSpec = `MMT ${mmtKategori} ${mmtBahanKode}${nettoSpec}${
+            res.topping ? ` + Top: ${res.topping.nama}` : ''
+          }`;
           setKeteranganKalkulasi(
             isIncPpn ? `INC PPN; ${mmtSpec}` : `EXC PPN; ${mmtSpec}`,
           );
@@ -1044,6 +1272,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       mmtToppingKode,
       mmtToppingQty,
       mmtIsNetto,
+      mmtAlasanNetto,
       token,
       isIncPpn,
     ],
@@ -1052,13 +1281,51 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const handleToggleNetto = () => {
     const nextNetto = !mmtIsNetto;
     setMmtIsNetto(nextNetto);
+    if (!nextNetto) {
+      setMmtAlasanNetto('');
+    }
     setTimeout(() => {
       handleHitungMmt(nextNetto);
     }, 50);
   };
 
+  const handleUpdateMmtAlasan = (alasan: string) => {
+    setMmtAlasanNetto(alasan);
+    if (mh_divisi === '5') {
+      const topName =
+        mmtResult?.topping?.nama || (mmtToppingKode ? mmtToppingKode : '');
+      const nettoText = mmtIsNetto
+        ? alasan.trim()
+          ? ` (Netto - Alasan: ${alasan.trim()})`
+          : ' (Netto)'
+        : '';
+      const topText = topName ? ` + Top: ${topName}` : '';
+      const mmtSpec = `MMT ${mmtKategori} ${mmtBahanKode}${nettoText}${topText}`;
+      setKeteranganKalkulasi(
+        isIncPpn ? `INC PPN; ${mmtSpec}` : `EXC PPN; ${mmtSpec}`,
+      );
+    }
+  };
+
   // Auto calculate saat melangkah ke Step 2
   const goToStep2Kalkulasi = () => {
+    const activeSalesKode =
+      mh_sal_kode ||
+      user?.sales_kode ||
+      user?.sal_kode ||
+      user?.kode_sales ||
+      (user as any)?.kode ||
+      '';
+
+    if (!activeSalesKode) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Sales Tidak Terdeteksi',
+        text2: 'Mohon login ulang atau hubungi admin',
+      });
+      return;
+    }
+
     if (!mh_nama.trim()) {
       Toast.show({
         type: 'glassError',
@@ -1109,7 +1376,17 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     }
 
     if (mh_divisi === '1') {
-      const numLebar = toNumDecimal(mh_lebar) || 90;
+      const numQty = toNumCurrency(mh_jmlorder);
+      if (spandukMetode === 'MANUAL' && numQty < 100) {
+        Toast.show({
+          type: 'glassError',
+          text1: 'Minimal Order Cetak Manual',
+          text2:
+            'Cetak Spanduk Manual minimal 100 pcs. Silakan gunakan metode Cetak Machine untuk pesanan < 100 pcs.',
+        });
+        return;
+      }
+      const numLebar = toNumDecimal(mh_lebar) || spandukLebar || 90;
       if (numLebar <= 0) {
         Toast.show({
           type: 'glassError',
@@ -1126,7 +1403,10 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       setSpandukJenisKain(activeKain);
       setSpandukLebar(numLebar);
       setCurrentStep(2);
-      setTimeout(() => handleHitungSpanduk(numLebar, activeKain), 100);
+      setTimeout(
+        () => handleHitungSpanduk(numLebar, activeKain, spandukMetode),
+        100,
+      );
       return;
     }
 
@@ -1154,6 +1434,35 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   };
 
   const goToStep3Review = () => {
+    if (mh_divisi === '5' && mmtIsNetto && !mmtAlasanNetto.trim()) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Alasan Netto Diperlukan',
+        text2: 'Mohon isi alasan penggunaan Harga Netto terlebih dahulu',
+      });
+      return;
+    }
+    let currentCalc = Number(mh_harga_kalkulasi) || 0;
+    if (mh_divisi === '1' && spandukResult?.hargaSatuanPcs) {
+      currentCalc = isIncPpn
+        ? Math.round(spandukResult.hargaSatuanPcs * 1.11)
+        : Math.round(spandukResult.hargaSatuanPcs);
+    } else if (mh_divisi === '5' && mmtResult?.hargaSatuanPcs) {
+      currentCalc = isIncPpn
+        ? Math.round(mmtResult.hargaSatuanPcs * 1.11)
+        : Math.round(mmtResult.hargaSatuanPcs);
+    } else if (mh_divisi === '4' && garmenCalcResult) {
+      const rawHrg =
+        garmenCalcResult.hargaUpPerPcs ||
+        garmenCalcResult.hargaJualRevisi ||
+        garmenCalcResult.hargaJualPerPcs ||
+        garmenCalcResult.hargaJual ||
+        0;
+      currentCalc = isIncPpn ? Math.round(rawHrg * 1.11) : Math.round(rawHrg);
+    }
+    if (currentCalc > 0 && (!mh_harga || toNumCurrency(mh_harga) === 0)) {
+      setMhHarga(String(currentCalc));
+    }
     setCurrentStep(3);
   };
 
@@ -1182,7 +1491,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       user?.sales_kode ||
       user?.sal_kode ||
       user?.kode_sales ||
-      user?.kode ||
+      (user as any)?.kode ||
       '';
 
     let finalSubmitKain = mh_kain;
@@ -1221,21 +1530,69 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
         : Math.round(rawHrg);
     }
 
-    let finalKetKalkulasi = keteranganKalkulasi.trim();
-    if (isIncPpn && !finalKetKalkulasi.toUpperCase().includes('INC PPN')) {
-      finalKetKalkulasi = `INC PPN; ${finalKetKalkulasi.replace(
-        /^EXC PPN[;,]?\s*/i,
-        '',
-      )}`.trim();
-    } else if (
-      !isIncPpn &&
-      !finalKetKalkulasi.toUpperCase().includes('EXC PPN')
-    ) {
-      finalKetKalkulasi = `EXC PPN; ${finalKetKalkulasi.replace(
-        /^INC PPN[;,]?\s*/i,
-        '',
-      )}`.trim();
+    let finalHargaPengajuan = toNumCurrency(mh_harga);
+    if (finalHargaPengajuan <= 0 && finalHargaKalkulasi > 0) {
+      finalHargaPengajuan = finalHargaKalkulasi;
     }
+
+    if (mh_divisi === '5' && mmtIsNetto && !mmtAlasanNetto.trim()) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Alasan Netto Diperlukan',
+        text2: 'Mohon isi alasan penggunaan Harga Netto terlebih dahulu',
+      });
+      return;
+    }
+
+    if (
+      finalHargaKalkulasi > 0 &&
+      finalHargaPengajuan < finalHargaKalkulasi &&
+      !alasanPengajuan.trim()
+    ) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Alasan Diperlukan',
+        text2:
+          'Mohon isi alasan permintaan harga karena harga yang diajukan di bawah kalkulasi standar.',
+      });
+      return;
+    }
+
+    let finalKetKalkulasi = keteranganKalkulasi.trim();
+    if (mh_divisi === '5' && mmtIsNetto && mmtAlasanNetto.trim()) {
+      if (!finalKetKalkulasi.includes(mmtAlasanNetto.trim())) {
+        if (finalKetKalkulasi.includes('(Netto)')) {
+          finalKetKalkulasi = finalKetKalkulasi.replace(
+            /\(Netto\)/i,
+            `(Netto - Alasan: ${mmtAlasanNetto.trim()})`,
+          );
+        } else {
+          finalKetKalkulasi =
+            `${finalKetKalkulasi} [Alasan Netto: ${mmtAlasanNetto.trim()}]`.trim();
+        }
+      }
+    }
+    // Bersihkan prefix PPN atau alasan lama jika ada
+    let cleanKet = finalKetKalkulasi
+      .replace(/^(INC|EXC)\s*PPN[;,]?\s*/i, '')
+      .replace(/^\[ALASAN:[^\]]+\]\s*;?\s*/i, '')
+      .trim();
+
+    const ketParts: string[] = [];
+    // 1. PPN selalu di paling depan
+    ketParts.push(isIncPpn ? 'INC PPN' : 'EXC PPN');
+
+    // 2. Alasan pengajuan sales di posisi kedua
+    if (alasanPengajuan.trim()) {
+      ketParts.push(`[ALASAN: ${alasanPengajuan.trim()}]`);
+    }
+
+    // 3. Rincian kalkulasi lainnya
+    if (cleanKet) {
+      ketParts.push(cleanKet);
+    }
+
+    finalKetKalkulasi = ketParts.join('; ');
 
     const payload: PermintaanHargaPayload = {
       mh_divisi,
@@ -1244,7 +1601,8 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       mh_sal_kode: activeSalesKode,
       mh_nama,
       mh_jmlorder: toNumCurrency(mh_jmlorder),
-      mh_harga: 0,
+      mh_harga: finalHargaPengajuan,
+      mh_ongkir: toNumCurrency(mh_ongkir) || 0,
       mh_harga_kalkulasi: finalHargaKalkulasi,
       mh_ket_kalkulasi: finalKetKalkulasi,
       mh_budget: 0,
@@ -1297,13 +1655,18 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
         }
       }
 
+      const isAutoDone =
+        finalHargaKalkulasi > 0 && finalHargaPengajuan >= finalHargaKalkulasi;
+
       Toast.show({
         type: 'glassSuccess',
         text1: 'Pengajuan Berhasil',
         text2:
           mode === 'edit'
             ? 'Permintaan harga berhasil diperbarui'
-            : 'Permintaan harga berhasil diajukan ke sistem (Status: WAIT)',
+            : isAutoDone
+            ? 'Permintaan harga berhasil diajukan (Status: DONE - Disetujui)'
+            : 'Permintaan harga berhasil diajukan (Status: WAIT - Menunggu Persetujuan)',
       });
       setSaving(false);
       navigation.navigate('PermintaanHargaList');
@@ -1986,7 +2349,47 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   2. Dimensi & Kuantitas
                 </Text>
 
-                {/* Pilihan Jenis Kain Spanduk Terlebih Dahulu (Divisi 1) */}
+                {/* Pilihan Metode Cetak Spanduk (Divisi 1) */}
+                {mh_divisi === '1' && (
+                  <View style={styles.fieldWrap}>
+                    <Text style={styles.label}>
+                      Metode Cetak <Text style={styles.req}>*</Text>
+                    </Text>
+                    <View style={styles.divisiRow}>
+                      {availableSpandukMetode.map(met => {
+                        const isSel =
+                          spandukMetode.toUpperCase() === met.toUpperCase();
+                        return (
+                          <TouchableOpacity
+                            key={met}
+                            style={[
+                              styles.divisiChip,
+                              { flex: 1 },
+                              isSel && styles.divisiChipActive,
+                            ]}
+                            onPress={() =>
+                              handleSelectSpandukMetode(
+                                met as 'MANUAL' | 'MACHINE',
+                              )
+                            }
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.divisiChipText,
+                                isSel && styles.divisiChipTextActive,
+                              ]}
+                            >
+                              {met === 'MANUAL' ? 'Manual' : 'Machine'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {/* Pilihan Jenis Kain Spanduk Dinamis berdasarkan Metode Cetak (Divisi 1) */}
                 {mh_divisi === '1' && (
                   <View style={styles.fieldWrap}>
                     <Text style={styles.label}>
@@ -2054,7 +2457,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   )}
                 </View>
 
-                {/* Pilihan Lebar Dinamis yang Difilter Berdasarkan Jenis Kain (Divisi 1) */}
+                {/* Pilihan Lebar Dinamis yang Difilter Berdasarkan Metode & Jenis Kain (Divisi 1) */}
                 {mh_divisi === '1' && (
                   <View style={styles.fieldWrap}>
                     <Text style={styles.label}>
@@ -2098,12 +2501,84 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     Jumlah Order (Pcs) <Text style={styles.req}>*</Text>
                   </Text>
                   <TextInput
-                    style={[styles.input, { fontWeight: '700', fontSize: 15 }]}
+                    style={[
+                      styles.input,
+                      { fontWeight: '700', fontSize: 15 },
+                      mh_divisi === '1' &&
+                        spandukMetode === 'MANUAL' &&
+                        toNumCurrency(mh_jmlorder) > 0 &&
+                        toNumCurrency(mh_jmlorder) < 100 && {
+                          borderColor: '#ef4444',
+                          backgroundColor: '#fef2f2',
+                        },
+                    ]}
                     value={mh_jmlorder}
                     onChangeText={setMhJmlorder}
                     placeholder="0"
                     keyboardType="numeric"
                   />
+
+                  {/* Banner Informasi & Peringatan Batas Minimal 100 Pcs Cetak Manual */}
+                  {mh_divisi === '1' &&
+                    spandukMetode === 'MANUAL' &&
+                    toNumCurrency(mh_jmlorder) > 0 &&
+                    toNumCurrency(mh_jmlorder) < 100 && (
+                      <View
+                        style={{
+                          marginTop: 8,
+                          padding: 10,
+                          backgroundColor: '#fffbeb',
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#fde68a',
+                        }}
+                      >
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          <MaterialIcons
+                            name="warning"
+                            size={18}
+                            color="#d97706"
+                          />
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: '700',
+                              color: '#b45309',
+                            }}
+                          >
+                            Minimal Order Cetak Manual: 100 Pcs
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={{
+                            marginTop: 8,
+                            alignSelf: 'flex-start',
+                            backgroundColor: '#d97706',
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 6,
+                          }}
+                          onPress={() => handleSelectSpandukMetode('MACHINE')}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: '700',
+                              color: '#fff',
+                            }}
+                          >
+                            Beralih ke Cetak Machine
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                 </View>
 
                 {/* Pilihan Kategori & Bahan MMT Dinamis (Divisi 5) */}
@@ -2835,7 +3310,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       color={THEME.primary}
                     />
                     <Text style={styles.strataAccordionTitle}>
-                      Tabel Master Bahan
+                      Tabel Master Bahan Spanduk
                     </Text>
                   </View>
                   <MaterialIcons
@@ -2851,7 +3326,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   <View style={styles.strataTableBox}>
                     <View style={styles.strataTableHeader}>
                       <Text style={[styles.strataTh, { flex: 2 }]}>
-                        Rentang
+                        Panjang
                       </Text>
                       <Text
                         style={[
@@ -2883,9 +3358,9 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                           >
                             {s.qmax >= 99999
                               ? `≥ ${formatThousandsId(s.qmin)} m`
-                              : `${formatThousandsId(
+                              : `${formatNumberDisplay(
                                   s.qmin,
-                                )} - ${formatThousandsId(s.qmax)} m`}
+                                )} - ${formatNumberDisplay(s.qmax)} m`}
                           </Text>
                           <Text
                             style={[
@@ -3042,7 +3517,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       ? masterOptions.topping.find(
                           t => t.kode === mmtToppingKode,
                         )?.nama || mmtToppingKode
-                      : 'Tanpa Topping Tambahan (Standard)'}
+                      : 'Tanpa Aksesoris Tambahan (Standard)'}
                   </Text>
                   <MaterialIcons
                     name={
@@ -3122,8 +3597,8 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   style={[
                     styles.ppnCheckboxCard,
                     mmtIsNetto && {
-                      borderColor: '#d97706',
-                      backgroundColor: '#fffbeb',
+                      borderColor: '#a855f7',
+                      backgroundColor: '#faf5ff',
                     },
                     { marginTop: 12 },
                   ]}
@@ -3136,20 +3611,20 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         mmtIsNetto ? 'check-box' : 'check-box-outline-blank'
                       }
                       size={22}
-                      color={mmtIsNetto ? '#d97706' : '#94a3b8'}
+                      color={mmtIsNetto ? '#9333ea' : '#94a3b8'}
                     />
                     <View style={{ marginLeft: 8, flex: 1 }}>
                       <Text
                         style={[
                           styles.ppnCheckboxLabel,
-                          mmtIsNetto && { color: '#b45309', fontWeight: '700' },
+                          mmtIsNetto && { color: '#7e22ce', fontWeight: '700' },
                         ]}
                       >
                         Harga Netto
                       </Text>
                       <Text style={styles.ppnCheckboxSub}>
                         {mmtIsNetto
-                          ? 'Menggunakan tarif khusus Netto (flat rate)'
+                          ? 'Menggunakan tarif Netto (flat rate)'
                           : 'Menggunakan tarif berstrata kuantiti'}
                       </Text>
                     </View>
@@ -3158,7 +3633,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     style={[
                       styles.ppnBadge,
                       mmtIsNetto
-                        ? { backgroundColor: '#fef3c7', borderColor: '#fde68a' }
+                        ? { backgroundColor: '#f3e8ff', borderColor: '#e9d5ff' }
                         : styles.ppnBadgeExc,
                     ]}
                   >
@@ -3166,7 +3641,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       style={[
                         styles.ppnBadgeText,
                         mmtIsNetto
-                          ? { color: '#b45309' }
+                          ? { color: '#7e22ce' }
                           : styles.ppnBadgeTextExc,
                       ]}
                     >
@@ -3174,6 +3649,65 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     </Text>
                   </View>
                 </TouchableOpacity>
+
+                {/* Input Alasan Penggunaan Harga Netto (Wajib bila Netto aktif) */}
+                {mmtIsNetto && (
+                  <View
+                    style={{
+                      marginTop: 8,
+                      padding: 12,
+                      backgroundColor: '#faf5ff',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#e9d5ff',
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <MaterialIcons
+                        name="edit-note"
+                        size={18}
+                        color="#9333ea"
+                      />
+                      <Text
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: '700',
+                          color: '#6b21a8',
+                        }}
+                      >
+                        Alasan Penggunaan Harga Netto{' '}
+                        <Text style={{ color: '#dc2626' }}>*</Text>
+                      </Text>
+                    </View>
+                    <TextInput
+                      style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: '#d8b4fe',
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        fontSize: 13,
+                        color: '#1e293b',
+                        minHeight: 56,
+                        textAlignVertical: 'top',
+                      }}
+                      multiline
+                      numberOfLines={2}
+                      placeholder="Wajib diisi: Berikan alasan penggunaan tarif Netto"
+                      placeholderTextColor="#94a3b8"
+                      value={mmtAlasanNetto}
+                      onChangeText={handleUpdateMmtAlasan}
+                    />
+                  </View>
+                )}
 
                 {/* Checklist PPN 11% (Di Atas Hasil Kalkulasi Card MMT) */}
                 <TouchableOpacity
@@ -3230,8 +3764,29 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 {mmtResult ? (
                   <View style={styles.resultBox}>
                     <View style={styles.resultRow}>
-                      <Text style={styles.resultLabel}>Total Luas Cetak:</Text>
-                      <Text style={styles.resultValue}>
+                      <Text style={styles.resultLabel}>
+                        Luas ({mh_panjang} m x {mh_lebar} m):
+                      </Text>
+                      <Text style={[styles.resultValue, { fontWeight: '700' }]}>
+                        {mmtResult.luasPerPcs ||
+                          Math.round(
+                            toNumDecimal(mh_panjang) *
+                              toNumDecimal(mh_lebar) *
+                              100,
+                          ) / 100}{' '}
+                        m² / Pcs
+                      </Text>
+                    </View>
+                    <View style={styles.resultRow}>
+                      <Text style={styles.resultLabel}>
+                        Total Luas ({mh_jmlorder || 0} pcs):
+                      </Text>
+                      <Text
+                        style={[
+                          styles.resultValue,
+                          { color: '#0284c7', fontWeight: '700' },
+                        ]}
+                      >
                         {mmtResult.totalLuas} m²
                       </Text>
                     </View>
@@ -3247,7 +3802,17 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         <Text
                           style={[styles.resultValue, { color: '#d97706' }]}
                         >
-                          +Rp {formatThousandsId(mmtResult.topping.totalHarga)}
+                          +Rp{' '}
+                          {formatThousandsId(
+                            mmtResult.topping.hargaSatuan ||
+                              (mmtResult.topping.qty > 0
+                                ? Math.round(
+                                    mmtResult.topping.totalHarga /
+                                      mmtResult.topping.qty,
+                                  )
+                                : mmtResult.topping.totalHarga),
+                          )}{' '}
+                          /pcs
                         </Text>
                       </View>
                     )}
@@ -3329,7 +3894,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       color={THEME.primary}
                     />
                     <Text style={styles.strataAccordionTitle}>
-                      Tabel Referensi Strata MMT
+                      Tabel Master Bahan MMT
                     </Text>
                   </View>
                   <MaterialIcons
@@ -3376,10 +3941,10 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                             {s.is_netto
                               ? 'Harga Netto'
                               : s.qmax >= 99999
-                              ? `≥ ${formatThousandsId(s.qmin)} m²`
-                              : `${formatThousandsId(
+                              ? `≥ ${formatNumberDisplay(s.qmin)} m²`
+                              : `${formatNumberDisplay(
                                   s.qmin,
-                                )} - ${formatThousandsId(s.qmax)} m²`}
+                                )} - ${formatNumberDisplay(s.qmax)} m²`}
                           </Text>
                           <Text
                             style={[
@@ -3615,16 +4180,21 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   <View
                     style={{
                       flexDirection: 'row',
+                      alignItems: 'center',
                       justifyContent: 'space-between',
-                      alignItems: 'baseline',
                       marginBottom: 4,
                     }}
                   >
                     <Text style={styles.label}>Cetak</Text>
                   </View>
 
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {/* Trigger Dropdown Master Cetak */}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
                     <TouchableOpacity
                       style={[
                         styles.input,
@@ -3640,7 +4210,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     >
                       <Text
                         style={{
-                          fontSize: 12,
+                          fontSize: 14,
                           color: selectedCetakMasterItem
                             ? THEME.ink
                             : '#94a3b8',
@@ -3649,45 +4219,42 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         numberOfLines={1}
                       >
                         {selectedCetakMasterItem
-                          ? `[${
-                              selectedCetakMasterItem.mhb_jenis || 'CETAK'
-                            }] ${
+                          ? `${
+                              selectedCetakMasterItem.mhb_jenis ||
+                              selectedCetakMasterItem.jenis ||
+                              'CETAK'
+                            } - ${
                               selectedCetakMasterItem.mhb_ket ||
                               selectedCetakMasterItem.ket ||
-                              ''
+                              selectedCetakMasterItem.nama
                             } (Rp ${Number(
                               selectedCetakMasterItem.mhb_biaya ||
                                 selectedCetakMasterItem.biaya ||
                                 0,
-                            ).toLocaleString('id-ID')}/pcs)`
+                            ).toLocaleString('id-ID')})`
                           : 'Pilih Cetak / Sablon (Opsional)...'}
                       </Text>
                       <MaterialIcons
                         name="arrow-drop-down"
-                        size={22}
+                        size={24}
                         color="#64748b"
                       />
                     </TouchableOpacity>
 
-                    {/* Tombol Tambah */}
                     <TouchableOpacity
                       style={{
-                        backgroundColor: '#7c3aed',
-                        paddingHorizontal: 16,
-                        borderRadius: 8,
+                        backgroundColor: selectedCetakMasterItem
+                          ? THEME.primary
+                          : '#cbd5e1',
+                        borderRadius: 10,
+                        width: 44,
+                        height: 44,
                         justifyContent: 'center',
                         alignItems: 'center',
                       }}
+                      disabled={!selectedCetakMasterItem}
                       onPress={() => {
-                        if (!selectedCetakMasterItem) {
-                          Toast.show({
-                            type: 'glassError',
-                            text1: 'Pilih Cetak Terlebih Dahulu',
-                            text2:
-                              'Silakan buka dropdown untuk memilih jenis cetak',
-                          });
-                          return;
-                        }
+                        if (!selectedCetakMasterItem) return;
                         const jenis =
                           selectedCetakMasterItem.mhb_jenis ||
                           selectedCetakMasterItem.jenis ||
@@ -3695,27 +4262,12 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         const ket =
                           selectedCetakMasterItem.mhb_ket ||
                           selectedCetakMasterItem.ket ||
-                          selectedCetakMasterItem.nama ||
-                          'Custom';
+                          selectedCetakMasterItem.nama;
                         const biaya = Number(
                           selectedCetakMasterItem.mhb_biaya ||
                             selectedCetakMasterItem.biaya ||
                             0,
                         );
-
-                        if (
-                          garmenSelectedCetak.some(
-                            c => c.jenis === jenis && c.ket === ket,
-                          )
-                        ) {
-                          Toast.show({
-                            type: 'glassError',
-                            text1: 'Item Sudah Ada',
-                            text2:
-                              'Item cetak ini sudah ditambahkan sebelumnya',
-                          });
-                          return;
-                        }
 
                         setGarmenSelectedCetak(prev => [
                           ...prev,
@@ -3887,24 +4439,49 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 {/* HASIL RINCIAN KALKULASI GARMEN */}
                 {garmenCalcResult && (
                   <View style={styles.resultBox}>
-                    <View style={styles.resultRow}>
-                      <Text style={styles.resultLabel}>Margin Penjualan:</Text>
-                      <Text
-                        style={[
-                          styles.resultValue,
-                          { color: '#0284c7', fontWeight: '700' },
-                        ]}
-                      >
-                        {garmenCalcResult.strataAktif?.label
-                          ? `${garmenCalcResult.strataAktif.label} (${garmenCalcResult.strataAktif.persen}%)`
-                          : `${Number(
-                              garmenCalcResult.strataAktif?.persen !== undefined
-                                ? garmenCalcResult.strataAktif.persen
-                                : Number(garmenCalcResult.marginPersen || 0) *
-                                    100,
-                            ).toFixed(1)}%`}
-                      </Text>
-                    </View>
+                    {(() => {
+                      const activeTier = (
+                        garmenCalcResult.tabelReferensi ||
+                        garmenCalcResult.tanggaMargin ||
+                        []
+                      ).find(
+                        (t: any) =>
+                          (t.tier &&
+                            t.tier === garmenCalcResult.strataAktif?.tier) ||
+                          (t.qmin !== undefined &&
+                            toNumCurrency(mh_jmlorder) >=
+                              (t.qmin ?? t.minOrder ?? 0) &&
+                            toNumCurrency(mh_jmlorder) <=
+                              (t.qmax ?? t.maxOrder ?? 999999)),
+                      );
+                      const hargaBahanSatuan =
+                        activeTier?.up ??
+                        activeTier?.jual ??
+                        activeTier?.hargaJual ??
+                        garmenCalcResult.hpp +
+                          (garmenCalcResult.strataAktif?.marginRp || 0);
+                      const marginPersen =
+                        garmenCalcResult.strataAktif?.persen ??
+                        activeTier?.persen ??
+                        activeTier?.marginPercent ??
+                        Number(garmenCalcResult.marginPersen || 0) * 100;
+
+                      return (
+                        <View style={styles.resultRow}>
+                          <Text style={styles.resultLabel}>
+                            Margin Penjualan ({marginPersen}%)
+                          </Text>
+                          <Text
+                            style={[
+                              styles.resultValue,
+                              { color: '#0284c7', fontWeight: '700' },
+                            ]}
+                          >
+                            Rp {formatThousandsId(hargaBahanSatuan)} / Pcs{' '}
+                          </Text>
+                        </View>
+                      );
+                    })()}
 
                     {Number(
                       garmenCalcResult.tambahan?.totalPerPcs ||
@@ -3954,10 +4531,10 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       </View>
                     )}
 
-                    {/* Total Kalkulasi / Harga UP per Pcs */}
+                    {/* Total Kalkulasi per Pcs */}
                     <View style={[styles.resultRow, styles.resultTotalRow]}>
                       <Text style={styles.resultTotalLabel}>
-                        Total Kalkulasi (Harga UP):
+                        Total Kalkulasi:
                       </Text>
                       <Text
                         style={[
@@ -4396,7 +4973,13 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     <View style={styles.reviewRow}>
                       <Text style={styles.reviewLabel}>Ukuran (P x L):</Text>
                       <Text style={styles.reviewVal}>
-                        {mh_panjang || 0} m x {mh_lebar || 0} m
+                        {mh_panjang || 0} m x {mh_lebar || 0} m (
+                        {Math.round(
+                          toNumDecimal(mh_panjang) *
+                            toNumDecimal(mh_lebar) *
+                            100,
+                        ) / 100}{' '}
+                        m²/pcs)
                       </Text>
                     </View>
                     {mmtToppingKode ? (
@@ -4412,12 +4995,25 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       <Text
                         style={[
                           styles.reviewVal,
-                          mmtIsNetto && { color: '#d97706', fontWeight: '700' },
+                          mmtIsNetto && { color: '#9333ea', fontWeight: '700' },
                         ]}
                       >
                         {mmtIsNetto ? 'Harga Netto' : 'Harga Standar (Strata)'}
                       </Text>
                     </View>
+                    {mmtIsNetto && mmtAlasanNetto.trim() ? (
+                      <View style={styles.reviewRow}>
+                        <Text style={styles.reviewLabel}>Alasan Netto:</Text>
+                        <Text
+                          style={[
+                            styles.reviewValBold,
+                            { color: '#7e22ce', flex: 1, textAlign: 'right' },
+                          ]}
+                        >
+                          {mmtAlasanNetto.trim()}
+                        </Text>
+                      </View>
+                    ) : null}
                   </>
                 ) : (
                   <>
@@ -4505,7 +5101,9 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
               {/* Final Price Summary Box */}
               <View style={styles.reviewPriceBox}>
                 <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel}>Estimasi Satuan / Pcs:</Text>
+                  <Text style={styles.reviewLabel}>
+                    Estimasi Standar Kalkulasi / Pcs:
+                  </Text>
                   <Text
                     style={[
                       styles.resultTotalValue,
@@ -4515,11 +5113,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       },
                     ]}
                   >
-                    Rp{' '}
-                    {formatThousandsId(
-                      mh_harga_kalkulasi || toNumCurrency(mh_harga) || 0,
-                    )}{' '}
-                    /Pcs
+                    Rp {formatThousandsId(mh_harga_kalkulasi || 0)} /Pcs
                   </Text>
                 </View>
 
@@ -4537,8 +5131,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       Rp{' '}
                       {formatThousandsId(
                         (() => {
-                          const unitPrice =
-                            mh_harga_kalkulasi || toNumCurrency(mh_harga) || 0;
+                          const unitPrice = mh_harga_kalkulasi || 0;
                           const qty = toNumCurrency(mh_jmlorder) || 1;
                           const dppUnit = Math.round(unitPrice / 1.11);
                           return Math.round((unitPrice - dppUnit) * qty);
@@ -4566,7 +5159,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         { fontWeight: '800', color: '#166534' },
                       ]}
                     >
-                      Total Akhir (INC PPN 11%):
+                      Total Kalkulasi (INC PPN 11%):
                     </Text>
                     <Text
                       style={[
@@ -4576,8 +5169,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     >
                       Rp{' '}
                       {formatThousandsId(
-                        (mh_harga_kalkulasi || toNumCurrency(mh_harga)) *
-                          toNumCurrency(mh_jmlorder),
+                        (mh_harga_kalkulasi || 0) * toNumCurrency(mh_jmlorder),
                       )}
                     </Text>
                   </View>
@@ -4599,7 +5191,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         { fontWeight: '800', color: '#334155' },
                       ]}
                     >
-                      Total Akhir (Non PPN):
+                      Total Kalkulasi (Non PPN):
                     </Text>
                     <Text
                       style={[
@@ -4609,9 +5201,39 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     >
                       Rp{' '}
                       {formatThousandsId(
-                        (mh_harga_kalkulasi || toNumCurrency(mh_harga)) *
-                          toNumCurrency(mh_jmlorder),
+                        (mh_harga_kalkulasi || 0) * toNumCurrency(mh_jmlorder),
                       )}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Biaya Ongkir Review Row */}
+                {toNumCurrency(mh_ongkir) > 0 ? (
+                  <View style={[styles.reviewRow, { marginTop: 4 }]}>
+                    <Text style={[styles.reviewLabel, { color: '#0369a1' }]}>
+                      Ongkir (Luar Jawa):
+                    </Text>
+                    <Text
+                      style={[
+                        styles.reviewValBold,
+                        { fontSize: 13, color: '#0284c7' },
+                      ]}
+                    >
+                      Rp {formatThousandsId(toNumCurrency(mh_ongkir))}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={[styles.reviewRow, { marginTop: 4 }]}>
+                    <Text style={styles.reviewLabel}>Ongkos Kirim:</Text>
+                    <Text
+                      style={[
+                        styles.reviewValBold,
+                        { fontSize: 12, color: '#15803d' },
+                      ]}
+                    >
+                      {toNumCurrency(mh_ongkir) > 0
+                        ? `Rp ${formatThousandsId(toNumCurrency(mh_ongkir))}`
+                        : 'Rp 0'}
                     </Text>
                   </View>
                 )}
@@ -4642,103 +5264,582 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 </View>
               </View>
             </View>
+
+            {/* RIWAYAT TRANSAKSI & HARGA LAMA SO CUSTOMER (DROPDOWN COLLAPSIBLE) */}
+            <View style={[styles.card, { marginTop: 14 }]}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+                activeOpacity={0.7}
+                onPress={() => setIsSoHistoryExpanded(prev => !prev)}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    flex: 1,
+                  }}
+                >
+                  <MaterialIcons name="history" size={22} color="#0284c7" />
+                  <View style={{ flex: 1 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <Text style={styles.sectionHeadingNoMargin}>
+                        Riwayat Order Customer
+                      </Text>
+                      <View style={styles.soCountBadge}>
+                        <Text style={styles.soCountBadgeText}>
+                          {customerSoList.length} SO
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.soCustomerSubText, { marginTop: 2 }]}>
+                      <MaterialIcons
+                        name="business"
+                        size={12}
+                        color={THEME.ink}
+                      />{' '}
+                      <Text style={{ fontWeight: '700', color: THEME.ink }}>
+                        {mh_cus_nama || 'Belum dipilih'}
+                      </Text>
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.soDropdownToggleBtn}>
+                  <MaterialIcons
+                    name={
+                      isSoHistoryExpanded
+                        ? 'keyboard-arrow-up'
+                        : 'keyboard-arrow-down'
+                    }
+                    size={24}
+                    color="#0284c7"
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {/* Konten Dropdown (Hanya Tampil Saat Expanded) */}
+              {isSoHistoryExpanded && (
+                <View style={{ marginTop: 10 }}>
+                  {/* Form Pencarian Riwayat SO */}
+                  {customerSoList.length > 0 ? (
+                    <View style={styles.soSearchInputWrap}>
+                      <MaterialIcons
+                        name="search"
+                        size={18}
+                        color="#64748b"
+                        style={{ marginRight: 6 }}
+                      />
+                      <TextInput
+                        style={styles.soSearchInputField}
+                        placeholder="Cari nomor SO, pekerjaan, detail..."
+                        placeholderTextColor="#94a3b8"
+                        value={soSearchKeyword}
+                        onChangeText={setSoSearchKeyword}
+                        returnKeyType="search"
+                      />
+                      {soSearchKeyword.trim() ? (
+                        <TouchableOpacity
+                          onPress={() => setSoSearchKeyword('')}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          style={{ padding: 2 }}
+                        >
+                          <MaterialIcons
+                            name="cancel"
+                            size={18}
+                            color="#94a3b8"
+                          />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {loadingSoHistory ? (
+                    <View
+                      style={{
+                        paddingVertical: 20,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <ActivityIndicator size="small" color="#0284c7" />
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: '#64748b',
+                          marginTop: 6,
+                        }}
+                      >
+                        Memuat riwayat SO pelanggan...
+                      </Text>
+                    </View>
+                  ) : customerSoList.length === 0 ? (
+                    <View style={styles.soEmptyBox}>
+                      <MaterialIcons
+                        name="receipt-long"
+                        size={25}
+                        color="#cbd5e1"
+                      />
+                      <Text style={styles.soEmptyTitle}>
+                        Riwayat Tidak Ditemukan
+                      </Text>
+                      <Text style={styles.soEmptySub}>
+                        Customer ini belum memiliki riwayat order sebelumnya.
+                      </Text>
+                    </View>
+                  ) : filteredCustomerSoList.length === 0 ? (
+                    <View style={styles.soEmptyBox}>
+                      <MaterialIcons
+                        name="search-off"
+                        size={25}
+                        color="#cbd5e1"
+                      />
+                      <Text style={styles.soEmptyTitle}>
+                        Hasil Tidak Ditemukan
+                      </Text>
+                      <Text style={styles.soEmptySub}>
+                        Tidak ada riwayat SO yang cocok dengan "
+                        {soSearchKeyword}".
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 10 }}>
+                      {filteredCustomerSoList.map((so, idx) => (
+                        <View
+                          key={`${so.so_nomor}-${idx}`}
+                          style={styles.soItemCard}
+                        >
+                          {/* Header SO Item */}
+                          <View style={styles.soItemHeaderRow}>
+                            <View style={styles.soNomorBadge}>
+                              <Text style={styles.soNomorBadgeText}>
+                                {so.so_nomor}
+                              </Text>
+                            </View>
+                            {so.divisi_nama ? (
+                              <View style={styles.soDivisiBadge}>
+                                <Text style={styles.soDivisiBadgeText}>
+                                  {so.divisi_nama}
+                                </Text>
+                              </View>
+                            ) : null}
+                            <Text style={styles.soTanggalText}>
+                              {so.so_tanggal_fmt || so.so_tanggal}
+                            </Text>
+                          </View>
+
+                          {/* Nama Item Pekerjaan */}
+                          <Text style={styles.soItemName} numberOfLines={2}>
+                            {so.so_nama ||
+                              so.so_nama2 ||
+                              'Pekerjaan Tanpa Nama'}
+                          </Text>
+
+                          {/* Qty, Harga Satuan, & Total Nominal SO */}
+                          {(() => {
+                            const soJumlah = Number(so.so_jumlah) || 0;
+                            const soHarga = Number(so.so_harga) || 0;
+                            const soTotal = soJumlah * soHarga;
+
+                            return (
+                              <View style={styles.soItemPriceRow}>
+                                <View style={styles.soPriceCol}>
+                                  <Text style={styles.soItemQtyText}>
+                                    Qty:{' '}
+                                    <Text
+                                      style={{
+                                        fontWeight: '700',
+                                        color: THEME.ink,
+                                      }}
+                                    >
+                                      {formatThousandsId(soJumlah)}
+                                    </Text>
+                                  </Text>
+                                </View>
+
+                                <View style={styles.soPriceCol}>
+                                  <Text style={styles.soItemUnitPriceText}>
+                                    Rp {formatThousandsId(soHarga)}/pcs
+                                  </Text>
+                                </View>
+
+                                <View style={styles.soPriceCol}>
+                                  <Text style={styles.soItemPriceText}>
+                                    Total: Rp {formatThousandsId(soTotal)}
+                                  </Text>
+                                </View>
+                              </View>
+                            );
+                          })()}
+
+                          {/* Spesifikasi Lengkap SO */}
+                          <View style={styles.soItemSpecBox}>
+                            {so.so_kain ? (
+                              <Text style={styles.soItemSpecLine}>
+                                •{' '}
+                                <Text style={styles.soItemSpecLabel}>
+                                  Bahan/Kain:
+                                </Text>{' '}
+                                {so.so_kain}
+                              </Text>
+                            ) : null}
+                            {so.so_ukuran ? (
+                              <Text style={styles.soItemSpecLine}>
+                                •{' '}
+                                <Text style={styles.soItemSpecLabel}>
+                                  Ukuran:
+                                </Text>{' '}
+                                {so.so_ukuran}
+                              </Text>
+                            ) : so.so_panjang || so.so_lebar ? (
+                              <Text style={styles.soItemSpecLine}>
+                                •{' '}
+                                <Text style={styles.soItemSpecLabel}>
+                                  Ukuran:
+                                </Text>{' '}
+                                {so.so_panjang} x {so.so_lebar}
+                              </Text>
+                            ) : null}
+                            {so.so_finishing ? (
+                              <Text style={styles.soItemSpecLine}>
+                                •{' '}
+                                <Text style={styles.soItemSpecLabel}>
+                                  Finishing:
+                                </Text>{' '}
+                                {so.so_finishing}
+                              </Text>
+                            ) : null}
+                            {so.so_keterangan ? (
+                              <Text
+                                style={[
+                                  styles.soItemSpecLine,
+                                  { fontStyle: 'italic', color: '#64748b' },
+                                ]}
+                              >
+                                •{' '}
+                                <Text style={styles.soItemSpecLabel}>Ket:</Text>{' '}
+                                {so.so_keterangan}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* PENGAJUAN HARGA SALES & STATUS APPROVAL */}
+            <View style={[styles.card, { marginTop: 14 }]}>
+              <View style={styles.reviewHeaderWithIcon}>
+                <MaterialIcons
+                  name="monetization-on"
+                  size={20}
+                  color={THEME.primary}
+                />
+                <Text style={styles.sectionHeadingNoMargin}>
+                  Permintaan Harga Custom
+                </Text>
+              </View>
+
+              {/* Info Pembanding Harga Standar Kalkulasi */}
+              <View style={styles.calcStandardBox}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                  }}
+                >
+                  <Text style={styles.calcStandardLabel}>
+                    Kalkulasi Sistem:
+                  </Text>
+                  <Text style={styles.calcStandardValue}>
+                    Rp {formatThousandsId(mh_harga_kalkulasi || 0)} /pcs
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  <Text style={styles.calcStandardSubLabel}>
+                    Total ({formatThousandsId(mh_jmlorder || 0)} Pcs):
+                  </Text>
+                  <Text style={styles.calcStandardSubValue}>
+                    Rp{' '}
+                    {formatThousandsId(
+                      (mh_harga_kalkulasi || 0) * toNumCurrency(mh_jmlorder),
+                    )}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Input Harga Pengajuan Sales */}
+              <View style={[styles.fieldWrap, { marginTop: 12 }]}>
+                <Text style={styles.label}>
+                  Ajukan Permintaan Harga Per Pcs
+                  <Text style={styles.req}>*</Text>
+                </Text>
+                <View style={styles.currencyInputWrap}>
+                  <Text style={styles.currencyPrefix}>Rp</Text>
+                  <TextInput
+                    style={styles.currencyInputField}
+                    keyboardType="numeric"
+                    value={
+                      mh_harga ? formatThousandsId(toNumCurrency(mh_harga)) : ''
+                    }
+                    onChangeText={val => {
+                      const numeric = val.replace(/[^0-9]/g, '');
+                      setMhHarga(numeric);
+                    }}
+                    placeholder="Masukkan harga pengajuan..."
+                    placeholderTextColor="#04080eff"
+                  />
+                </View>
+                <Text style={styles.totalProposedText}>
+                  Total Nilai Pengajuan: Rp{' '}
+                  {formatThousandsId(
+                    (toNumCurrency(mh_harga) || mh_harga_kalkulasi || 0) *
+                      toNumCurrency(mh_jmlorder),
+                  )}
+                </Text>
+              </View>
+
+              {/* Input Biaya Ongkir (Opsional) */}
+              <View style={[styles.fieldWrap, { marginTop: 12 }]}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 4,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <Text style={styles.label}>Ongkir (Opsional)</Text>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => setShowOngkirPopover(v => !v)}
+                      style={styles.infoIconBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialIcons
+                        name={showOngkirPopover ? 'info-outline' : 'info'}
+                        size={16}
+                        color={showOngkirPopover ? '#64748b' : '#0284c7'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.currencyInputWrap}>
+                  <Text style={styles.currencyPrefix}>Rp</Text>
+                  <TextInput
+                    style={styles.currencyInputField}
+                    keyboardType="numeric"
+                    value={
+                      mh_ongkir
+                        ? formatThousandsId(toNumCurrency(mh_ongkir))
+                        : ''
+                    }
+                    onChangeText={val => {
+                      const numeric = val.replace(/[^0-9]/g, '');
+                      setMhOngkir(numeric);
+                    }}
+                    placeholder="0"
+                    placeholderTextColor="#94a3b8"
+                  />
+                </View>
+
+                {/* Popover Informasi Ketentuan Ongkir */}
+                {showOngkirPopover && (
+                  <View style={styles.ongkirPopoverBox}>
+                    <View style={styles.ongkirPopoverHeader}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <MaterialIcons
+                          name="local-shipping"
+                          size={16}
+                          color="#0284c7"
+                        />
+                        <Text style={styles.ongkirPopoverTitle}>
+                          Ketentuan Ongkos Kirim
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => setShowOngkirPopover(false)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <MaterialIcons name="close" size={16} color="#64748b" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.ongkirPopoverText}>
+                      •{' '}
+                      <Text style={{ fontWeight: '700', color: '#0369a1' }}>
+                        Pulau Jawa:
+                      </Text>{' '}
+                      Gratis Ongkir.
+                    </Text>
+                    <Text style={styles.ongkirPopoverText}>
+                      •{' '}
+                      <Text style={{ fontWeight: '700', color: '#b45309' }}>
+                        Luar Pulau Jawa:
+                      </Text>{' '}
+                      Ongkir ditanggung customer.
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Input Alasan Permintaan (Masuk ke mh_ket_kalkulasi) */}
+              <View style={[styles.fieldWrap, { marginTop: 12 }]}>
+                <Text style={styles.label}>
+                  Alasan Permintaan Harga{' '}
+                  {toNumCurrency(mh_harga) < mh_harga_kalkulasi &&
+                  mh_harga_kalkulasi > 0 ? (
+                    <Text style={styles.req}>(Wajib Diisi)*</Text>
+                  ) : (
+                    <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+                      (Opsional)
+                    </Text>
+                  )}
+                </Text>
+                <TextInput
+                  style={[styles.input, styles.textAreaInput]}
+                  multiline
+                  numberOfLines={3}
+                  value={alasanPengajuan}
+                  onChangeText={setAlasanPengajuan}
+                  placeholder="Contoh: Diskon repeat order partai besar, menyesuaikan SO terakhir, penyesuaian budget klien..."
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* TOMBOL AKSI DI PALING BAWAH REVIEW (AGAR SALES ME-REVIEW KESELURUHAN) */}
+            {/* ========================================================================= */}
+            <View style={styles.reviewBottomActionBox}>
+              <TouchableOpacity
+                style={styles.reviewBtnSecondary}
+                onPress={() => setCurrentStep(2)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name="arrow-back"
+                  size={16}
+                  color={THEME.ink}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={styles.reviewBtnSecondaryText}>Hitung Ulang</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.reviewBtnPrimary}
+                onPress={() => setShowConfirmSubmitModal(true)}
+                disabled={saving}
+                activeOpacity={0.9}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.reviewBtnPrimaryText}>
+                    {mode === 'edit' ? 'Simpan Perubahan' : 'Kirim Pengajuan'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </ScrollView>
 
       {/* ========================================================================= */}
-      {/* WIZARD FOOTER ACTION NAVIGATION BAR */}
+      {/* WIZARD FOOTER ACTION NAVIGATION BAR (HANYA UNTUK LANGKAH 1 & 2) */}
       {/* ========================================================================= */}
-      <View style={styles.footerContainer}>
-        {currentStep === 1 && (
-          <View style={{ width: '100%' }}>
-            <TouchableOpacity
-              style={[styles.navBtnPrimary, { backgroundColor: THEME.primary }]}
-              onPress={goToStep2Kalkulasi}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.navBtnPrimaryText}>Kalkulasi Harga ➔</Text>
-            </TouchableOpacity>
+      {currentStep !== 3 && (
+        <View style={styles.footerContainer}>
+          {currentStep === 1 && (
+            <View style={{ width: '100%' }}>
+              <TouchableOpacity
+                style={[
+                  styles.navBtnPrimary,
+                  { backgroundColor: THEME.primary },
+                ]}
+                onPress={goToStep2Kalkulasi}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.navBtnPrimaryText}>Kalkulasi Harga ➔</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.bypassBtnCard}
-              onPress={goToStep3Review}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.bypassBtnText}>
-                Buat Permintaan Harga (Tanpa Kalkulasi)
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+              <TouchableOpacity
+                style={styles.bypassBtnCard}
+                onPress={goToStep3Review}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.bypassBtnText}>
+                  Buat Permintaan Harga (Tanpa Kalkulasi)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-        {currentStep === 2 && (
-          <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
-            <TouchableOpacity
-              style={styles.navBtnSecondary}
-              onPress={() => setCurrentStep(1)}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name="arrow-back"
-                size={16}
-                color={THEME.ink}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={styles.navBtnSecondaryText}>Ubah Spek</Text>
-            </TouchableOpacity>
+          {currentStep === 2 && (
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+              <TouchableOpacity
+                style={styles.navBtnSecondary}
+                onPress={() => setCurrentStep(1)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name="arrow-back"
+                  size={16}
+                  color={THEME.ink}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={styles.navBtnSecondaryText}>Ubah Spek</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.navBtnPrimary,
-                { flex: 1.6, backgroundColor: '#0284c7' },
-              ]}
-              onPress={goToStep3Review}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.navBtnPrimaryText}>Lanjut ke Review ➔</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {currentStep === 3 && (
-          <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
-            <TouchableOpacity
-              style={styles.navBtnSecondary}
-              onPress={() => setCurrentStep(2)}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name="arrow-back"
-                size={16}
-                color={THEME.ink}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={styles.navBtnSecondaryText}>Hitung Ulang</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.navBtnPrimary,
-                { flex: 1.8, backgroundColor: '#15803d' },
-              ]}
-              onPress={submitPermintaan}
-              disabled={saving}
-              activeOpacity={0.9}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Text style={styles.navBtnPrimaryText}>
-                    {mode === 'edit' ? 'Simpan Perubahan' : 'Kirim Pengajuan'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+              <TouchableOpacity
+                style={[
+                  styles.navBtnPrimary,
+                  { flex: 1.6, backgroundColor: '#0284c7' },
+                ]}
+                onPress={goToStep3Review}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.navBtnPrimaryText}>Lanjut ke Review ➔</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Date Picker Modal */}
       {/* MODAL SEARCH & PILIH CUSTOMER */}
@@ -5126,9 +6227,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   />
                 </View>
                 <View>
-                  <Text style={styles.modalHeaderTitle}>
-                    Pilih Opsi Tambahan
-                  </Text>
+                  <Text style={styles.modalHeaderTitle}>Pilih Tambahan</Text>
                   <Text style={styles.modalHeaderSub}>
                     Tarif bahan {garmenKategoriKain.toUpperCase()} (x{' '}
                     {mh_jmlorder || 0} Pcs)
@@ -5319,14 +6418,12 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
               }}
             >
               <View>
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: '700',
-                    color: THEME.ink,
-                  }}
-                >
+                <Text style={styles.modalHeaderTitle}>
                   Pilih Sablon / Sublim
+                </Text>
+                <Text style={styles.modalHeaderSub}>
+                  Tarif bahan {garmenKategoriKain.toUpperCase()} (x{' '}
+                  {mh_jmlorder || 0} Pcs)
                 </Text>
               </View>
               <TouchableOpacity
@@ -5467,37 +6564,27 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
             )}
 
             {/* Kotak Pencarian Sederhana */}
-            <View
-              style={{
-                marginHorizontal: 16,
-                marginBottom: 6,
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: '#f8fafc',
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                paddingHorizontal: 10,
-                height: 36,
-              }}
-            >
-              <TextInput
-                style={{
-                  flex: 1,
-                  fontSize: 12,
-                  color: THEME.ink,
-                  paddingVertical: 0,
-                }}
-                placeholder="Cari jenis atau ukuran..."
-                placeholderTextColor="#94a3b8"
-                value={searchGarmenCetak}
-                onChangeText={setSearchGarmenCetak}
-              />
-              {searchGarmenCetak ? (
-                <TouchableOpacity onPress={() => setSearchGarmenCetak('')}>
-                  <MaterialIcons name="close" size={16} color="#94a3b8" />
-                </TouchableOpacity>
-              ) : null}
+            <View style={styles.modalSearchArea}>
+              <View style={styles.modalSearchBox}>
+                <MaterialIcons
+                  name="search"
+                  size={20}
+                  color="#64748b"
+                  style={{ marginRight: 6 }}
+                />
+                <TextInput
+                  style={styles.modalSearchInput}
+                  placeholder="Cari Jenis / Ukuran"
+                  placeholderTextColor="#94a3b8"
+                  value={searchGarmenCetak}
+                  onChangeText={setSearchGarmenCetak}
+                />
+                {searchGarmenCetak ? (
+                  <TouchableOpacity onPress={() => setSearchGarmenCetak('')}>
+                    <MaterialIcons name="cancel" size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
 
             {/* List Item Bersih & Ringan */}
@@ -5580,6 +6667,217 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 </View>
               }
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL KONFIRMASI PENGAJUAN / SIMPAN PERUBAHAN */}
+      <Modal
+        visible={showConfirmSubmitModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!saving) setShowConfirmSubmitModal(false);
+        }}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={styles.confirmModalCard}>
+            <View style={styles.confirmModalHeader}>
+              <Text style={styles.confirmModalTitle}>
+                {mode === 'edit'
+                  ? 'Konfirmasi Perubahan'
+                  : 'Konfirmasi Permintaan Harga'}
+              </Text>
+            </View>
+
+            {/* Box Ringkasan Data */}
+            <View style={styles.confirmSummaryBox}>
+              <View style={styles.confirmSummaryRow}>
+                <Text style={styles.confirmSummaryLabel}>Customer</Text>
+                <Text style={styles.confirmSummaryVal} numberOfLines={1}>
+                  {mh_cus_nama || mh_cus_kode || '-'}
+                </Text>
+              </View>
+
+              <View style={styles.confirmSummaryRow}>
+                <Text style={styles.confirmSummaryLabel}>Pekerjaan</Text>
+                <Text style={styles.confirmSummaryVal} numberOfLines={1}>
+                  {mh_nama || '-'}
+                </Text>
+              </View>
+
+              <View style={styles.confirmSummaryRow}>
+                <Text style={styles.confirmSummaryLabel}>Jumlah Order</Text>
+                <Text style={styles.confirmSummaryVal}>
+                  {formatThousandsId(toNumCurrency(mh_jmlorder))} Pcs
+                </Text>
+              </View>
+
+              <View style={styles.confirmSummaryRow}>
+                <Text style={styles.confirmSummaryLabel}>Harga Permintaan</Text>
+                <Text
+                  style={[
+                    styles.confirmSummaryVal,
+                    { color: '#059669', fontWeight: '800' },
+                  ]}
+                >
+                  Rp {formatThousandsId(toNumCurrency(mh_harga))} /pcs
+                </Text>
+              </View>
+
+              {toNumCurrency(mh_ongkir) > 0 ? (
+                <View
+                  style={[
+                    styles.confirmSummaryRow,
+                    { borderBottomWidth: 0, paddingBottom: 0 },
+                  ]}
+                >
+                  <Text style={styles.confirmSummaryLabel}>Ongkir</Text>
+                  <Text style={styles.confirmSummaryVal}>
+                    Rp {formatThousandsId(toNumCurrency(mh_ongkir))}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Keterangan Status DONE / WAIT / MINTA */}
+            {(() => {
+              const unitCalc = mh_harga_kalkulasi || 0;
+              const unitProposed =
+                toNumCurrency(mh_harga) || (unitCalc > 0 ? unitCalc : 0);
+              const isUnderCalc = unitCalc > 0 && unitProposed < unitCalc;
+              const diff = unitCalc - unitProposed;
+              const totalDiff = diff * toNumCurrency(mh_jmlorder);
+
+              if (unitCalc <= 0) {
+                return (
+                  <View
+                    style={[
+                      styles.confirmStatusNoticeBox,
+                      { backgroundColor: '#f8fafc', borderColor: '#cbd5e1' },
+                    ]}
+                  >
+                    <MaterialIcons name="info" size={18} color="#64748b" />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.confirmStatusNoticeTitle,
+                          { color: '#334155' },
+                        ]}
+                      >
+                        STATUS: MINTA (Draft)
+                      </Text>
+                      <Text
+                        style={[
+                          styles.confirmStatusNoticeSub,
+                          { color: '#64748b' },
+                        ]}
+                      >
+                        Permintaan harga diajukan tanpa kalkulasi harga.
+                      </Text>
+                    </View>
+                  </View>
+                );
+              }
+
+              if (isUnderCalc) {
+                return (
+                  <View
+                    style={[
+                      styles.confirmStatusNoticeBox,
+                      { backgroundColor: '#fffbeb', borderColor: '#fde68a' },
+                    ]}
+                  >
+                    <MaterialIcons name="schedule" size={20} color="#d97706" />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.confirmStatusNoticeTitle,
+                          { color: '#b45309' },
+                        ]}
+                      >
+                        STATUS: WAIT (Memerlukan Persetujuan)
+                      </Text>
+                      <Text
+                        style={[
+                          styles.confirmStatusNoticeSub,
+                          { color: '#92400e' },
+                        ]}
+                      >
+                        Harga permintaan harga lebih rendah Rp{' '}
+                        {formatThousandsId(diff)}/pcs ( - Rp{' '}
+                        {formatThousandsId(totalDiff)} ) dari kalkulasi harga.
+                      </Text>
+                    </View>
+                  </View>
+                );
+              }
+
+              return (
+                <View
+                  style={[
+                    styles.confirmStatusNoticeBox,
+                    { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
+                  ]}
+                >
+                  <MaterialIcons
+                    name="check-circle"
+                    size={20}
+                    color="#16a34a"
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.confirmStatusNoticeTitle,
+                        { color: '#15803d' },
+                      ]}
+                    >
+                      STATUS: DONE (Otomatis Disetujui)
+                    </Text>
+                    <Text
+                      style={[
+                        styles.confirmStatusNoticeSub,
+                        { color: '#166534' },
+                      ]}
+                    >
+                      Harga permintaan memenuhi atau di atas standar kalkulasi
+                      sistem.
+                    </Text>
+                  </View>
+                </View>
+              );
+            })()}
+
+            {/* Action Buttons */}
+            <View style={styles.confirmModalActions}>
+              <TouchableOpacity
+                style={styles.confirmBtnCancel}
+                onPress={() => setShowConfirmSubmitModal(false)}
+                disabled={saving}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmBtnCancelText}>Batal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.confirmBtnSubmit,
+                  saving ? { opacity: 0.7 } : null,
+                ]}
+                onPress={() => {
+                  setShowConfirmSubmitModal(false);
+                  submitPermintaan();
+                }}
+                disabled={saving}
+                activeOpacity={0.85}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.confirmBtnSubmitText}>Konfirmasi</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -6008,18 +7306,47 @@ const styles = StyleSheet.create({
   resultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 3,
+    alignItems: 'flex-start',
+    paddingVertical: 3.5,
+    gap: 8,
   },
-  resultLabel: { fontSize: 12, color: '#475569' },
-  resultValue: { fontSize: 12, fontWeight: '600', color: THEME.ink },
+  resultLabel: {
+    fontSize: 12,
+    color: '#475569',
+    flex: 1,
+    flexShrink: 1,
+    marginRight: 4,
+  },
+  resultValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: THEME.ink,
+    textAlign: 'right',
+    flexShrink: 0,
+  },
   resultTotalRow: {
     borderTopWidth: 1,
     borderColor: '#bbf7d0',
-    paddingTop: 6,
-    marginTop: 4,
+    paddingTop: 8,
+    marginTop: 6,
+    alignItems: 'flex-start',
+    gap: 8,
   },
-  resultTotalLabel: { fontSize: 13, fontWeight: '800', color: '#166534' },
-  resultTotalValue: { fontSize: 14, fontWeight: '800', color: '#15803d' },
+  resultTotalLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#166534',
+    flex: 1,
+    flexShrink: 1,
+    marginRight: 4,
+  },
+  resultTotalValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#15803d',
+    textAlign: 'right',
+    flexShrink: 0,
+  },
 
   // Strata Accordion Table
   strataAccordionHeader: {
@@ -6096,11 +7423,30 @@ const styles = StyleSheet.create({
   reviewRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 2,
+    alignItems: 'flex-start',
+    paddingVertical: 3,
+    gap: 8,
   },
-  reviewLabel: { fontSize: 12, color: '#64748b' },
-  reviewVal: { fontSize: 12, color: THEME.ink },
-  reviewValBold: { fontSize: 12, fontWeight: '700', color: THEME.ink },
+  reviewLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    flex: 1,
+    flexShrink: 1,
+    marginRight: 4,
+  },
+  reviewVal: {
+    fontSize: 12,
+    color: THEME.ink,
+    textAlign: 'right',
+    flexShrink: 0,
+  },
+  reviewValBold: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.ink,
+    textAlign: 'right',
+    flexShrink: 0,
+  },
   datePickerBtn: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -6120,6 +7466,269 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
     marginTop: 8,
+  },
+  reviewHeaderWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  sectionHeadingNoMargin: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: THEME.ink,
+  },
+  calcStandardBox: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 6,
+  },
+  calcStandardLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600',
+    flex: 1,
+    flexShrink: 1,
+    marginRight: 6,
+  },
+  calcStandardValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0284c7',
+    textAlign: 'right',
+    flexShrink: 0,
+  },
+  calcStandardSubLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+    flex: 1,
+    flexShrink: 1,
+    marginRight: 6,
+  },
+  calcStandardSubValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+    textAlign: 'right',
+    flexShrink: 0,
+  },
+  currencyInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  currencyPrefix: {
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#64748b',
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 10,
+    borderRightWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  currencyInputField: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 15,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  totalProposedText: {
+    fontSize: 11.5,
+    color: '#059669',
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  statusNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 6,
+  },
+  statusNoticeTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  statusNoticeSub: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  textAreaInput: {
+    height: 70,
+    textAlignVertical: 'top',
+    paddingTop: 8,
+  },
+  soCountBadge: {
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  soDropdownToggleBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f0f9ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  soSearchInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 38,
+    marginBottom: 10,
+  },
+  soSearchInputField: {
+    flex: 1,
+    fontSize: 12,
+    color: THEME.ink,
+    paddingVertical: 0,
+  },
+  soCountBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  soCustomerSubText: {
+    fontSize: 12,
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  soEmptyBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
+  soEmptyTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+    marginTop: 6,
+  },
+  soEmptySub: {
+    fontSize: 11.5,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  soItemCard: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    padding: 10,
+  },
+  soItemHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  soNomorBadge: {
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  soNomorBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  soTanggalText: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  soDivisiBadge: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  soDivisiBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  soItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: THEME.ink,
+    marginBottom: 6,
+  },
+  soItemPriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    marginBottom: 6,
+  },
+  soPriceCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  soItemQtyText: {
+    fontSize: 11.5,
+    color: '#64748b',
+  },
+  soItemUnitPriceText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  soItemPriceText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  soItemSpecBox: {
+    backgroundColor: '#fff',
+    padding: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    gap: 2,
+  },
+  soItemSpecLine: {
+    fontSize: 11,
+    color: '#475569',
+  },
+  soItemSpecLabel: {
+    fontWeight: '700',
+    color: '#334155',
   },
 
   // Footer Navigation
@@ -6542,5 +8151,210 @@ const styles = StyleSheet.create({
     color: THEME.primary,
     fontWeight: '700',
     marginTop: 2,
+  },
+  infoIconBtn: {
+    padding: 2,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ongkirPopoverBox: {
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#7dd3fc',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 6,
+    ...PENAWARAN_SHADOW.card,
+  },
+  ongkirPopoverHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  ongkirPopoverTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  ongkirPopoverText: {
+    fontSize: 11,
+    color: '#334155',
+    lineHeight: 16,
+    marginTop: 2,
+  },
+
+  // Step 3 Review Bottom Actions
+  reviewBottomActionBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 20,
+    marginBottom: 36,
+  },
+  reviewBtnSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 14,
+    paddingVertical: 14,
+    ...PENAWARAN_SHADOW.softCard,
+  },
+  reviewBtnSecondaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  reviewBtnPrimary: {
+    flex: 1.6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#15803d',
+    borderRadius: 14,
+    paddingVertical: 14,
+    ...PENAWARAN_SHADOW.softCard,
+  },
+  reviewBtnPrimaryText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+
+  // Confirm Modal Styles
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  confirmModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    ...PENAWARAN_SHADOW.card,
+  },
+  confirmModalHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  confirmModalIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#e0f2fe',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  confirmModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: THEME.ink,
+    textAlign: 'center',
+  },
+  confirmModalSub: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  confirmSummaryBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginBottom: 18,
+    gap: 8,
+  },
+  confirmSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  confirmSummaryLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600',
+    flex: 1,
+  },
+  confirmSummaryVal: {
+    fontSize: 12,
+    color: THEME.ink,
+    fontWeight: '700',
+    maxWidth: '55%',
+    textAlign: 'right',
+  },
+  confirmStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  confirmStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  confirmStatusNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  confirmStatusNoticeTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  confirmStatusNoticeSub: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2,
+  },
+  confirmModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  confirmBtnCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtnCancelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  confirmBtnSubmit: {
+    flex: 1.4,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#15803d',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...PENAWARAN_SHADOW.softCard,
+  },
+  confirmBtnSubmitText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

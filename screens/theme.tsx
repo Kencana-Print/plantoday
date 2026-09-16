@@ -47,6 +47,7 @@ export const COMPANY_STATUS_COLORS: Record<string, { base: string; text: string 
   BELUM: { base: '#6B7280', text: '#374151' },      // Abu-abu / Gray
   MINTA: { base: '#DC2626', text: '#991B1B' },      // Merah / Red (Dimintakan harga)
   WAIT: { base: '#16A34A', text: '#15803D' },       // Hijau / Green (Menunggu acc)
+  NEGO: { base: '#6b21a8', text: '#4a044e' },       // Deep Purple / Ungu Gelap (Harga di bawah kalkulasi)
   DONE: { base: '#18181B', text: '#09090B' },       // Hitam / Black (Selesai diproses)
   CANCEL: { base: '#2563EB', text: '#1D4ED8' },     // Biru / Blue (Dibatalkan)
   SELESAI: { base: '#18181B', text: '#09090B' },    // Hitam / Black

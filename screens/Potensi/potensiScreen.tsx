@@ -610,7 +610,7 @@ export default function PotensiScreen({ navigation }: any) {
   const renderEmptyState = useMemo(
     () => (
       <View style={styles.emptyBox}>
-        <MaterialIcons name="check-circle" size={48} color={THEME.muted} />
+        <MaterialIcons name="not-interested" size={48} color={THEME.danger} />
         <Text style={styles.emptyTitle}>Tidak Ada Kandidat</Text>
         <Text style={styles.emptySubtitle}>
           {search.trim() || activeTab !== 'ALL' || selectedSales

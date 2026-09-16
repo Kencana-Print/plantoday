@@ -57,7 +57,7 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
 
 def getConfigValue(String key) {
     return project.hasProperty(key) ? project.property(key) : System.getenv(key)
@@ -94,8 +94,8 @@ android {
         applicationId "com.plantoday"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 43  // selalu naikkan ketika mau build
-        versionName "1.7.3" // selalu naikkan ketika mau build
+        versionCode 44  // selalu naikkan ketika mau build
+        versionName "1.7.4" // selalu naikkan ketika mau build
         ndk {
             abiFilters "arm64-v8a"
         }
@@ -124,6 +124,7 @@ android {
         release {
             signingConfig signingConfigs.release.storeFile ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources true
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }

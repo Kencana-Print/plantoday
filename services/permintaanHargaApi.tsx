@@ -1,4 +1,4 @@
-﻿import api from './api';
+import api from './api';
 import { PUBLIC_IMAGE_READ_ORIGIN } from './api';
 import RNBlobUtil from 'react-native-blob-util';
 
@@ -19,6 +19,8 @@ export type PermintaanHargaItem = {
   customer: string;
   divisi: string;
   jml_order: number;
+  mh_harga?: number;
+  harga?: number;
   harga_kalkulasi: number;
   status: string;
   ket_kalkulasi: string;
@@ -35,6 +37,7 @@ export type PermintaanHargaDetail = {
   mh_nama: string;
   mh_jmlorder: number;
   mh_harga: number;
+  mh_ongkir?: number;
   mh_budget: number;
   mh_kain: string;
   mh_panjang: number;
@@ -48,6 +51,13 @@ export type PermintaanHargaDetail = {
   mh_status: string;
   mh_harga_kalkulasi: number;
   mh_ket_kalkulasi: string;
+  mh_nomor_kalkulasi?: string;
+  mh_date_kalkulasi?: string;
+  mh_apv_usr?: string;
+  user_kalkulasi?: string;
+  sales_nama?: string;
+  divisi_nama?: string;
+  user_create?: string;
   mh_dateorder?: string;
   created_at_fmt?: string;
   gambar_1_url?: string;
@@ -63,6 +73,7 @@ export type PermintaanHargaPayload = {
   mh_nama: string;
   mh_jmlorder: number;
   mh_harga: number;
+  mh_ongkir?: number;
   mh_budget: number;
   mh_dateorder?: string;
   mh_kain: string;
@@ -331,6 +342,7 @@ export type PermintaanHargaStatusCounts = {
   BELUM: number;
   MINTA: number;
   WAIT: number;
+  NEGO: number;
   DONE: number;
   CANCEL: number;
 };
@@ -347,6 +359,7 @@ export const getPermintaanHargaStatusCounts = async (
     BELUM: 0,
     MINTA: 0,
     WAIT: 0,
+    NEGO: 0,
     DONE: 0,
     CANCEL: 0,
   }) as PermintaanHargaStatusCounts;
@@ -533,3 +546,62 @@ export const getCetakOptionsApi = async (token?: string | null) => {
   });
   return response.data?.data || [];
 };
+
+export interface CustomerSoHistoryItem {
+  so_nomor: string;
+  so_tanggal: string;
+  so_tanggal_fmt: string;
+  so_nama: string;
+  so_nama2?: string;
+  so_jumlah: number;
+  so_harga: number | string;
+  so_ukuran?: string;
+  so_kain?: string;
+  so_finishing?: string;
+  so_panjang?: number;
+  so_lebar?: number;
+  so_gramasi?: string;
+  so_keterangan?: string;
+  so_divisi?: number;
+  divisi_nama?: string;
+}
+
+export const getCustomerSoHistoryApi = async (
+  cusKode: string,
+  paramsOrToken?:
+    | { divisi?: string; q?: string; page?: number; limit?: number }
+    | string
+    | null,
+  token?: string | null,
+): Promise<{ data: CustomerSoHistoryItem[]; pagination?: any }> => {
+  if (!cusKode) return { data: [] };
+
+  let params: { divisi?: string; q?: string; page?: number; limit?: number } = {
+    divisi: 'SEMUA',
+    q: '',
+    page: 1,
+    limit: 20,
+  };
+  let effectiveToken: string | null | undefined = token;
+
+  if (typeof paramsOrToken === 'string' || paramsOrToken === null) {
+    effectiveToken = paramsOrToken;
+  } else if (paramsOrToken && typeof paramsOrToken === 'object') {
+    params = { ...params, ...paramsOrToken };
+  }
+
+  const response = await api.get(
+    `/penjualan/minta-harga-form/katalog/customer/${encodeURIComponent(cusKode)}`,
+    {
+      params,
+      headers: effectiveToken ? { Authorization: `Bearer ${effectiveToken}` } : undefined,
+    },
+  );
+
+  const rawData = response.data?.data;
+  return {
+    data: Array.isArray(rawData) ? rawData : [],
+    pagination: response.data?.pagination,
+  };
+};
+

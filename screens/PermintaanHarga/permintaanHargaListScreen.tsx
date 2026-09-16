@@ -112,21 +112,100 @@ const getStatusBadgeStyle = (status: string) => {
 
 const KalkulasiRowItem = ({
   status,
-  harga,
+  hargaKalkulasi,
+  mhHarga,
   ket,
 }: {
   status: string;
-  harga: number;
+  hargaKalkulasi?: number;
+  mhHarga?: number;
   ket?: string;
 }) => {
-  if (String(status || '').toUpperCase() !== 'DONE') return null;
+  const normStatus = String(status || '').toUpperCase();
+  const isDone = normStatus === 'DONE';
+  const isNego = normStatus === 'NEGO';
+
+  const numCalc = Number(hargaKalkulasi || 0);
+  const numMh = Number(mhHarga || 0);
+
+  const hasCalc = numCalc > 0;
+  const hasMh = numMh > 0;
+
+  if (!hasCalc && !hasMh && !isDone && !isNego) return null;
+
   const parsed = parseKetKalkulasi(ket);
+
   return (
     <View style={styles.kalkulasiRow}>
-      <View style={styles.kalkulasiRowLeft}>
-        <Text style={styles.kalkulasiLabel}>Harga Kalkulasi:</Text>
-        <Text style={styles.kalkulasiValue}>Rp {formatNumber(harga || 0)}</Text>
-      </View>
+      {hasCalc && hasMh ? (
+        <View
+          style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 8,
+          }}
+        >
+          {/* Kolom 1: Kalkulasi */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Text style={[styles.kalkulasiLabel, { fontSize: 11 }]}>
+              Kalkulasi:
+            </Text>
+            <Text
+              style={[
+                styles.kalkulasiValue,
+                { color: '#15803d', fontSize: 12 },
+              ]}
+            >
+              Rp {formatNumber(numCalc)}
+            </Text>
+          </View>
+
+          <View style={{ width: 1, height: 12, backgroundColor: '#cbd5e1' }} />
+
+          {/* Kolom 2: Permintaan Harga */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Text style={[styles.kalkulasiLabel, { fontSize: 11 }]}>
+              Minta:
+            </Text>
+            <Text
+              style={[
+                styles.kalkulasiValue,
+                {
+                  color: isNego
+                    ? '#6b21a8'
+                    : numMh > numCalc
+                    ? '#0284c7'
+                    : '#0f172a',
+                  fontSize: 12,
+                },
+              ]}
+            >
+              Rp {formatNumber(numMh)}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.kalkulasiRowLeft}>
+          <Text style={styles.kalkulasiLabel}>
+            {hasCalc ? 'Kalkulasi Harga:' : 'Permintaan Harga:'}
+          </Text>
+          <Text
+            style={[
+              styles.kalkulasiValue,
+              hasCalc
+                ? { color: '#15803d' }
+                : isNego
+                ? { color: '#6b21a8' }
+                : {},
+            ]}
+          >
+            Rp {formatNumber(hasCalc ? numCalc : numMh)}
+          </Text>
+        </View>
+      )}
+
       {parsed.ppnStatus && (
         <View
           style={[
@@ -282,7 +361,7 @@ export default function PermintaanHargaListScreen({ navigation, route }: any) {
   }, [rawItems, filterStatus]);
 
   const statusCounts = useMemo(() => {
-    const map = { done: 0, minta: 0, wait: 0, belum: 0, cancel: 0 };
+    const map = { done: 0, minta: 0, wait: 0, nego: 0, belum: 0, cancel: 0 };
     rawItems.forEach(item => {
       const st = String(item.status || '').toLowerCase();
       if (st === 'selesai') {
@@ -491,7 +570,7 @@ export default function PermintaanHargaListScreen({ navigation, route }: any) {
                   <MaterialIcons name="touch-app" size={14} color="#FFFFFF" />
                 </View>
                 <Text style={styles.tooltipText}>
-                  Klik untuk melihat keterangan status
+                  Klik untuk melihat informasi status
                 </Text>
                 <TouchableOpacity
                   onPress={dismissTooltip}
@@ -512,80 +591,89 @@ export default function PermintaanHargaListScreen({ navigation, route }: any) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.chipScroll}
           >
-            {(['all', 'done', 'minta', 'wait', 'belum', 'cancel'] as const).map(
-              opt => {
-                const active = filterStatus === opt;
-                const count =
-                  opt === 'all' ? rawItems.length : statusCounts[opt];
-                const getDotColor = (): string | undefined => {
-                  if (opt === 'done') return COMPANY_STATUS_COLORS.DONE.base;
-                  if (opt === 'minta') return COMPANY_STATUS_COLORS.MINTA.base;
-                  if (opt === 'wait') return COMPANY_STATUS_COLORS.WAIT.base;
-                  if (opt === 'belum') return COMPANY_STATUS_COLORS.BELUM.base;
-                  if (opt === 'cancel')
-                    return COMPANY_STATUS_COLORS.CANCEL.base;
-                  return undefined;
-                };
-                const dotColor = getDotColor();
-                const labelText =
-                  opt === 'all'
-                    ? `Semua (${count})`
-                    : opt === 'done'
-                    ? `Done (${count})`
-                    : opt === 'minta'
-                    ? `Minta (${count})`
-                    : opt === 'wait'
-                    ? `Wait (${count})`
-                    : opt === 'belum'
-                    ? `Belum (${count})`
-                    : `Cancel (${count})`;
-                return (
-                  <TouchableOpacity
-                    key={`status-${opt}`}
-                    style={[styles.chipItem, active && styles.chipItemActive]}
-                    activeOpacity={0.8}
-                    onPress={() =>
-                      setFilterStatus(prev =>
-                        opt === 'all' ? 'all' : prev === opt ? 'all' : opt,
-                      )
-                    }
+            {(
+              [
+                'all',
+                'done',
+                'minta',
+                'wait',
+                'nego',
+                'belum',
+                'cancel',
+              ] as const
+            ).map(opt => {
+              const active = filterStatus === opt;
+              const count = opt === 'all' ? rawItems.length : statusCounts[opt];
+              const getDotColor = (): string | undefined => {
+                if (opt === 'done') return COMPANY_STATUS_COLORS.DONE.base;
+                if (opt === 'minta') return COMPANY_STATUS_COLORS.MINTA.base;
+                if (opt === 'wait') return COMPANY_STATUS_COLORS.WAIT.base;
+                if (opt === 'nego') return COMPANY_STATUS_COLORS.NEGO.base;
+                if (opt === 'belum') return COMPANY_STATUS_COLORS.BELUM.base;
+                if (opt === 'cancel') return COMPANY_STATUS_COLORS.CANCEL.base;
+                return undefined;
+              };
+              const dotColor = getDotColor();
+              const labelText =
+                opt === 'all'
+                  ? `Semua (${count})`
+                  : opt === 'done'
+                  ? `Done (${count})`
+                  : opt === 'minta'
+                  ? `Minta (${count})`
+                  : opt === 'wait'
+                  ? `Wait (${count})`
+                  : opt === 'nego'
+                  ? `Nego (${count})`
+                  : opt === 'belum'
+                  ? `Belum (${count})`
+                  : `Cancel (${count})`;
+              return (
+                <TouchableOpacity
+                  key={`status-${opt}`}
+                  style={[styles.chipItem, active && styles.chipItemActive]}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    setFilterStatus(prev =>
+                      opt === 'all' ? 'all' : prev === opt ? 'all' : opt,
+                    )
+                  }
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
                   >
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
+                    {opt === 'all' ? (
+                      <MaterialIcons
+                        name="format-list-bulleted"
+                        size={14}
+                        color={active ? THEME.primary : THEME.muted}
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: dotColor,
+                        }}
+                      />
+                    )}
+                    <Text
+                      style={[
+                        styles.chipLabel,
+                        active && styles.chipLabelActive,
+                      ]}
                     >
-                      {opt === 'all' ? (
-                        <MaterialIcons
-                          name="format-list-bulleted"
-                          size={14}
-                          color={active ? THEME.primary : THEME.muted}
-                        />
-                      ) : (
-                        <View
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 4,
-                            backgroundColor: dotColor,
-                          }}
-                        />
-                      )}
-                      <Text
-                        style={[
-                          styles.chipLabel,
-                          active && styles.chipLabelActive,
-                        ]}
-                      >
-                        {labelText}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              },
-            )}
+                      {labelText}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
       </View>
@@ -668,7 +756,8 @@ export default function PermintaanHargaListScreen({ navigation, route }: any) {
               </Text>
               <KalkulasiRowItem
                 status={item.status}
-                harga={item.harga_kalkulasi}
+                hargaKalkulasi={item.harga_kalkulasi}
+                mhHarga={item.mh_harga ?? item.harga}
                 ket={item.ket_kalkulasi}
               />
               <Text style={styles.detail}>Tap untuk lihat detail</Text>
@@ -850,6 +939,21 @@ export default function PermintaanHargaListScreen({ navigation, route }: any) {
                   <Text style={styles.legendModalStatusName}>WAIT</Text>
                   <Text style={styles.legendModalStatusDesc}>
                     Sudah diproses, menunggu acc
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.legendModalRow}>
+                <View
+                  style={[
+                    styles.legendModalDot,
+                    { backgroundColor: COMPANY_STATUS_COLORS.NEGO.base },
+                  ]}
+                />
+                <View style={styles.legendModalTextWrap}>
+                  <Text style={styles.legendModalStatusName}>NEGO</Text>
+                  <Text style={styles.legendModalStatusDesc}>
+                    Permintaan harga dibawah standar kalkulasi
                   </Text>
                 </View>
               </View>

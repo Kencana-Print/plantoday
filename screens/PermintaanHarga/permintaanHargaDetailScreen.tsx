@@ -1,3 +1,4 @@
+/* eslint-disable react-native/no-inline-styles */
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -74,53 +75,64 @@ export type ParsedKetKalkulasi = {
 export const parseKetKalkulasi = (raw?: string): ParsedKetKalkulasi => {
   if (!raw) return { ppnStatus: null, items: [] };
 
+  // Deteksi status PPN secara global dari string
+  let ppnStatus: 'EXCLUDE' | 'INCLUDE' | null = null;
+  const upperRaw = raw.toUpperCase();
+  if (
+    upperRaw.includes('EXC PPN') ||
+    upperRaw.includes('EXCLUDE PPN') ||
+    upperRaw.includes('EXCPPN') ||
+    upperRaw.includes('NON PPN') ||
+    upperRaw.includes('NONPPN')
+  ) {
+    ppnStatus = 'EXCLUDE';
+  } else if (
+    upperRaw.includes('INC PPN') ||
+    upperRaw.includes('INCLUDE PPN') ||
+    upperRaw.includes('INCPPN')
+  ) {
+    ppnStatus = 'INCLUDE';
+  }
+
   const rawParts = raw
     .split(/[;\n\r]+/)
     .map(p => p.trim())
     .filter(Boolean);
 
-  let ppnStatus: 'EXCLUDE' | 'INCLUDE' | null = null;
   const items: string[] = [];
 
   for (const part of rawParts) {
-    const upper = part.toUpperCase().replace(/\s+/g, '');
-    if (
-      upper === 'EXCPPN' ||
-      upper === 'EXCLUDEPPN' ||
-      upper === 'NONPPN' ||
-      upper === 'EXCLUDE'
-    ) {
-      ppnStatus = 'EXCLUDE';
-    } else if (
-      upper === 'INCPPN' ||
-      upper === 'INCLUDEPPN' ||
-      upper === 'INCLUDE'
-    ) {
-      ppnStatus = 'INCLUDE';
-    } else {
-      let formatted = part
-        .replace(/\bSTIAP\b/gi, 'Setiap')
-        .replace(/\bSTP\b/gi, 'Setiap')
-        .replace(/\bTDK\b/gi, 'Tidak')
-        .replace(/\bDG\b/gi, 'Dengan')
-        .replace(/\bDGN\b/gi, 'Dengan')
-        .replace(/\bBLM\b/gi, 'Belum')
-        .replace(/\bSDH\b/gi, 'Sudah')
-        .replace(/\bHARGA\s*\+?\s*(\d+)/gi, (_, num) => {
-          const formattedNum = new Intl.NumberFormat('id-ID').format(
-            Number(num),
-          );
-          return `Harga +Rp ${formattedNum}`;
-        })
-        .replace(/\+\s*(\d{3,})/g, (_, num) => {
-          const formattedNum = new Intl.NumberFormat('id-ID').format(
-            Number(num),
-          );
-          return `+Rp ${formattedNum}`;
-        });
+    // Bersihkan penanda PPN agar tidak menjadi item terpisah
+    let cleaned = part
+      .replace(/\b(EXC|INC|EXCLUDE|INCLUDE|NON)\s*PPN\b/gi, '')
+      .replace(/^\b(EXCLUDE|INCLUDE)\b$/gi, '')
+      .trim();
 
-      items.push(formatted);
+    if (!cleaned) continue;
+
+    // Rapikan tampilan tag alasan [ALASAN: ...]
+    if (/^\[ALASAN:\s*(.+)\]$/i.test(cleaned)) {
+      cleaned = cleaned.replace(/^\[ALASAN:\s*(.+)\]$/i, 'Alasan: $1');
     }
+
+    let formatted = cleaned
+      .replace(/\bSTIAP\b/gi, 'Setiap')
+      .replace(/\bSTP\b/gi, 'Setiap')
+      .replace(/\bTDK\b/gi, 'Tidak')
+      .replace(/\bDG\b/gi, 'Dengan')
+      .replace(/\bDGN\b/gi, 'Dengan')
+      .replace(/\bBLM\b/gi, 'Belum')
+      .replace(/\bSDH\b/gi, 'Sudah')
+      .replace(/\bHARGA\s*\+?\s*(\d+)/gi, (_, num) => {
+        const formattedNum = new Intl.NumberFormat('id-ID').format(Number(num));
+        return `Harga +Rp ${formattedNum}`;
+      })
+      .replace(/\+\s*(\d{3,})/g, (_, num) => {
+        const formattedNum = new Intl.NumberFormat('id-ID').format(Number(num));
+        return `+Rp ${formattedNum}`;
+      });
+
+    items.push(formatted);
   }
 
   return { ppnStatus, items };
@@ -128,63 +140,437 @@ export const parseKetKalkulasi = (raw?: string): ParsedKetKalkulasi => {
 
 const HasilKalkulasiSection = ({
   status,
-  harga,
+  hargaKalkulasi,
+  hargaPengajuan,
+  jmlOrder,
+  ongkir,
   ket,
+  nomorKalkulasi,
+  dateKalkulasi,
+  userKalkulasi,
+  salesNama,
+  userCreate,
 }: {
-  status: string;
-  harga: number;
+  status?: string;
+  hargaKalkulasi?: number;
+  hargaPengajuan?: number;
+  jmlOrder?: number;
+  ongkir?: number;
   ket?: string;
+  nomorKalkulasi?: string;
+  dateKalkulasi?: string;
+  userKalkulasi?: string;
+  salesNama?: string;
+  userCreate?: string;
 }) => {
-  if (String(status || '').toUpperCase() !== 'DONE') return null;
-  const parsed = parseKetKalkulasi(ket);
-  return (
-    <View style={styles.kalkulasiCard}>
-      <Text
-        style={[styles.sectionTitle, { color: '#166534', marginBottom: 10 }]}
-      >
-        Hasil Kalkulasi
-      </Text>
+  const normStatus = String(status || '')
+    .trim()
+    .toUpperCase();
+  const isDone = normStatus === 'DONE';
+  const isNego = normStatus === 'NEGO';
 
-      <View style={styles.kalkulasiHeader}>
-        <View style={styles.kalkulasiHeaderLeft}>
-          <Text style={styles.kalkulasiLabel}>Harga Satuan Kalkulasi</Text>
-          <Text style={styles.kalkulasiPrice}>
-            Rp {formatNumber(harga || 0)}
+  if (!isDone && !isNego) return null;
+
+  const parsed = parseKetKalkulasi(ket);
+  const cardBadgeCode = nomorKalkulasi || (isNego ? 'KALS' : 'KAL');
+  const userText = isNego
+    ? salesNama || userCreate || 'Sales'
+    : userKalkulasi || 'Finance';
+
+  const calcPrice = Number(hargaKalkulasi || 0);
+  const reqPrice = Number(hargaPengajuan || 0);
+  const qty = Number(jmlOrder || 0);
+
+  const hasBothPrices = calcPrice > 0 && reqPrice > 0;
+  const gap = reqPrice - calcPrice;
+  const persenGap = calcPrice > 0 ? (gap / calcPrice) * 100 : 0;
+  const totalGap = gap * qty;
+
+  const themeColors = isNego
+    ? {
+        cardBg: '#faf5ff',
+        cardBorder: '#e9d5ff',
+        titleColor: '#581c87',
+        badgeBg: '#f3e8ff',
+        badgeBorder: '#d8b4fe',
+        badgeText: '#6b21a8',
+        subBorderColor: '#e9d5ff',
+        bulletColor: '#6b21a8',
+        itemTextColor: '#4a044e',
+      }
+    : {
+        cardBg: '#f0fdf4',
+        cardBorder: '#bbf7d0',
+        titleColor: '#166534',
+        badgeBg: '#dcfce7',
+        badgeBorder: '#86efac',
+        badgeText: '#15803d',
+        subBorderColor: '#bbf7d0',
+        bulletColor: '#15803d',
+        itemTextColor: '#14532d',
+      };
+
+  return (
+    <View
+      style={[
+        styles.kalkulasiCard,
+        {
+          backgroundColor: themeColors.cardBg,
+          borderColor: themeColors.cardBorder,
+          padding: 12,
+        },
+      ]}
+    >
+      {/* 1. Header: Icon + Title & Badges */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 6,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            flex: 1,
+          }}
+        >
+          <MaterialIcons
+            name={isNego ? 'handshake' : 'calculate'}
+            size={18}
+            color={themeColors.titleColor}
+          />
+          <Text
+            style={[
+              styles.sectionTitle,
+              {
+                color: themeColors.titleColor,
+                marginBottom: 0,
+                borderBottomWidth: 0,
+                paddingBottom: 0,
+                fontSize: 14,
+              },
+            ]}
+          >
+            Hasil Kalkulasi Harga
           </Text>
         </View>
-        {parsed.ppnStatus && (
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {/* PPN Badge */}
+          {parsed.ppnStatus && (
+            <View
+              style={[
+                styles.ppnBadge,
+                parsed.ppnStatus === 'INCLUDE'
+                  ? styles.ppnBadgeInclude
+                  : styles.ppnBadgeExclude,
+                { paddingHorizontal: 6, paddingVertical: 2 },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.ppnBadgeText,
+                  parsed.ppnStatus === 'INCLUDE'
+                    ? styles.ppnBadgeTextInclude
+                    : styles.ppnBadgeTextExclude,
+                  { fontSize: 10 },
+                ]}
+              >
+                {parsed.ppnStatus === 'INCLUDE' ? 'Inc PPN' : 'Exc PPN'}
+              </Text>
+            </View>
+          )}
+
+          {/* Tag Kode Badge */}
           <View
             style={[
               styles.ppnBadge,
-              parsed.ppnStatus === 'INCLUDE'
-                ? styles.ppnBadgeInclude
-                : styles.ppnBadgeExclude,
+              {
+                backgroundColor: themeColors.badgeBg,
+                borderColor: themeColors.badgeBorder,
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+              },
             ]}
           >
             <Text
               style={[
                 styles.ppnBadgeText,
-                parsed.ppnStatus === 'INCLUDE'
-                  ? styles.ppnBadgeTextInclude
-                  : styles.ppnBadgeTextExclude,
+                {
+                  color: themeColors.badgeText,
+                  fontWeight: '900',
+                  fontSize: 10.5,
+                },
               ]}
             >
-              {parsed.ppnStatus === 'INCLUDE' ? 'Include PPN' : 'Exclude PPN'}
+              {cardBadgeCode}
             </Text>
           </View>
-        )}
+        </View>
       </View>
 
+      {/* 2. Compact Meta Row (Single Line: Left User, Right Date) */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 10,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <MaterialIcons
+            name="person"
+            size={13}
+            color={THEME.muted}
+            style={{ marginTop: 0.5 }}
+          />
+          <Text
+            style={{
+              fontSize: 11,
+              color: '#1e293b',
+              fontWeight: '700',
+              textTransform: 'capitalize',
+            }}
+          >
+            {userText}
+          </Text>
+        </View>
+
+        {dateKalkulasi ? (
+          <Text
+            style={{
+              fontSize: 11,
+              color: '#64748b',
+              fontWeight: '500',
+              textAlign: 'right',
+            }}
+          >
+            {formatDateTimeLocal(dateKalkulasi)}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* 3. Compact Price Comparison Grid */}
+      <View
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: isNego ? '#f5d0fe' : '#bbf7d0',
+          padding: 10,
+          gap: 8,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {/* Kolom 1: Kalkulasi Standar */}
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 10.5,
+                fontWeight: '700',
+                color: '#64748b',
+                textTransform: 'uppercase',
+                marginBottom: 2,
+              }}
+            >
+              Kalkulasi Harga
+            </Text>
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: '800',
+                color: '#15803d',
+              }}
+            >
+              Rp {formatNumber(calcPrice || 0)}
+            </Text>
+          </View>
+
+          <View style={{ width: 1, height: 28, backgroundColor: '#e2e8f0' }} />
+
+          {/* Kolom 2: Pengajuan Sales */}
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 10.5,
+                fontWeight: '700',
+                color: '#64748b',
+                textTransform: 'uppercase',
+                marginBottom: 2,
+              }}
+            >
+              Permintaan Harga
+            </Text>
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: '800',
+                color: isNego
+                  ? '#6b21a8'
+                  : reqPrice > calcPrice
+                  ? '#0284c7'
+                  : '#1e293b',
+              }}
+            >
+              Rp {formatNumber(reqPrice || 0)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Gap Pill Bar (Jika ada perbedaan harga) */}
+        {hasBothPrices && Math.abs(gap) >= 1 ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: gap > 0 ? '#f0fdf4' : '#faf5ff',
+              borderWidth: 1,
+              borderColor: gap > 0 ? '#86efac' : '#d8b4fe',
+              borderRadius: 6,
+              paddingHorizontal: 8,
+              paddingVertical: 5,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11.5,
+                fontWeight: '800',
+                color: gap > 0 ? '#15803d' : '#6b21a8',
+              }}
+            >
+              {gap > 0
+                ? `+Rp ${formatNumber(gap)} (+${persenGap.toFixed(1)}%)`
+                : `-Rp ${formatNumber(Math.abs(gap))} (-${Math.abs(
+                    persenGap,
+                  ).toFixed(1)}%)`}
+            </Text>
+
+            {qty > 1 && (
+              <Text
+                style={{
+                  fontSize: 10.5,
+                  color: '#64748b',
+                  fontWeight: '600',
+                }}
+              >
+                Total:{' '}
+                {gap > 0
+                  ? `+Rp ${formatNumber(totalGap)}`
+                  : `-Rp ${formatNumber(Math.abs(totalGap))}`}
+              </Text>
+            )}
+          </View>
+        ) : null}
+      </View>
+
+      {/* 4. Ongkir (Jika ada) */}
+      {Number(ongkir) > 0 ? (
+        <View
+          style={{
+            marginTop: 8,
+            paddingTop: 6,
+            borderTopWidth: 1,
+            borderColor: themeColors.subBorderColor,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 11,
+              color: '#475569',
+              fontWeight: '600',
+            }}
+          >
+            Biaya Pengiriman (Ongkir):
+          </Text>
+          <Text
+            style={{
+              fontSize: 11.5,
+              fontWeight: '700',
+              color: '#0284c7',
+            }}
+          >
+            {`+Rp ${formatNumber(Number(ongkir))}`}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* 5. Rincian Keterangan Kalkulasi */}
       {parsed.items.length > 0 && (
-        <View style={styles.kalkulasiKetWrap}>
-          <Text style={styles.kalkulasiKetLabel}>Rincian Kalkulasi:</Text>
+        <View
+          style={[
+            styles.kalkulasiKetWrap,
+            {
+              borderTopColor: themeColors.subBorderColor,
+              marginTop: 8,
+              paddingTop: 6,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.kalkulasiKetLabel,
+              { color: themeColors.titleColor, fontSize: 11, marginBottom: 4 },
+            ]}
+          >
+            Keterangan:
+          </Text>
           <View style={styles.kalkulasiItemList}>
-            {parsed.items.map((itemText, idx) => (
-              <View key={`ket-${idx}`} style={styles.kalkulasiItemRow}>
-                <Text style={styles.kalkulasiBullet}>-</Text>
-                <Text style={styles.kalkulasiItemText}>{itemText}</Text>
-              </View>
-            ))}
+            {parsed.items.map((itemText, idx) => {
+              const isAlasan = itemText.startsWith('Alasan:');
+              return (
+                <View
+                  key={`ket-${idx}`}
+                  style={[
+                    styles.kalkulasiItemRow,
+                    isAlasan && {
+                      backgroundColor: isNego ? '#faf5ff' : '#f0fdf4',
+                      borderLeftWidth: 2.5,
+                      borderLeftColor: isNego ? '#6b21a8' : '#16a34a',
+                      paddingHorizontal: 6,
+                      paddingVertical: 3,
+                      borderRadius: 4,
+                      marginBottom: 2,
+                    },
+                  ]}
+                >
+                  {!isAlasan && (
+                    <Text
+                      style={[
+                        styles.kalkulasiBullet,
+                        { color: themeColors.bulletColor, fontSize: 12 },
+                      ]}
+                    >
+                      •
+                    </Text>
+                  )}
+                  <Text
+                    style={[
+                      styles.kalkulasiItemText,
+                      {
+                        color: isAlasan
+                          ? isNego
+                            ? '#581c87'
+                            : '#166534'
+                          : themeColors.itemTextColor,
+                        fontSize: 11.5,
+                        fontWeight: isAlasan ? '700' : '500',
+                      },
+                    ]}
+                  >
+                    {itemText}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         </View>
       )}
@@ -209,6 +595,7 @@ const getStatusDescription = (status: string) => {
   if (key === 'MINTA') return 'Sedang dimintakan harga ke Finance';
   if (key === 'CANCEL') return 'Dibatalkan';
   if (key === 'WAIT') return 'Sudah diproses, menunggu ACC';
+  if (key === 'NEGO') return 'Permintaan harga dibawah standar kalkulasi';
   if (key === 'DONE') return 'Selesai';
   return '-';
 };
@@ -453,18 +840,22 @@ export default function PermintaanHargaDetailScreen({
       />
 
       {/* Top Navigation Bar */}
-      <View style={styles.topNav}>
+      <View
+        style={[styles.topNav, { paddingTop: Math.max(insets.top, 12) + 4 }]}
+      >
         <TouchableOpacity
           style={styles.backBtn}
           onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
+          activeOpacity={0.8}
         >
-          <MaterialIcons name="arrow-back-ios" size={18} color={THEME.ink} />
+          <Text style={styles.backBtnText}>Kembali</Text>
         </TouchableOpacity>
-        <Text style={styles.navTitle} numberOfLines={1}>
-          Detail Permintaan Harga
-        </Text>
-        <View style={{ width: 36 }} />
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.navTitle} numberOfLines={2}>
+            Detail Permintaan Harga
+          </Text>
+        </View>
+        <View style={styles.headerRightSpacer} />
       </View>
 
       {loading ? (
@@ -510,12 +901,24 @@ export default function PermintaanHargaDetailScreen({
 
             {/* Meta Timestamp & Creator */}
             <View style={styles.metaRow}>
-              <Text style={styles.metaText}>
-                Dibuat oleh: <Text style={styles.metaValue}>{createdBy}</Text>
-              </Text>
-              <Text style={styles.metaText}>
-                {formatDateTimeLocal(data?.created_at_fmt)}
-              </Text>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+              >
+                <MaterialIcons
+                  name="person"
+                  size={13}
+                  color={THEME.muted}
+                  style={{ marginTop: 0.5 }}
+                />
+                <Text style={styles.metaValue}>{createdBy}</Text>
+              </View>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+              >
+                <Text style={styles.metaText}>
+                  {formatDateTimeLocal(data?.created_at_fmt)}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -593,6 +996,18 @@ export default function PermintaanHargaDetailScreen({
               </View>
             ) : null}
 
+            {Number(data?.mh_ongkir) > 0 ? (
+              <View style={[styles.gridRow, { marginTop: 8 }]}>
+                <CompactCell
+                  label="Ongkos Kirim"
+                  value={`Rp ${formatNumber(
+                    Number(data?.mh_ongkir),
+                  )} (Luar Pulau Jawa)`}
+                  fullWidth
+                />
+              </View>
+            ) : null}
+
             {data?.mh_ket ? (
               <View style={styles.keteranganBox}>
                 <Text style={styles.keteranganLabel}>Keterangan:</Text>
@@ -601,11 +1016,19 @@ export default function PermintaanHargaDetailScreen({
             ) : null}
           </View>
 
-          {/* Card 4: Hasil Kalkulasi (Jika Selesai) */}
+          {/* Card 4: Hasil Kalkulasi (Jika Selesai / Nego) */}
           <HasilKalkulasiSection
             status={data?.mh_status}
-            harga={data?.mh_harga_kalkulasi}
+            hargaKalkulasi={data?.mh_harga_kalkulasi}
+            hargaPengajuan={data?.mh_harga}
+            jmlOrder={data?.mh_jmlorder}
+            ongkir={data?.mh_ongkir}
             ket={data?.mh_ket_kalkulasi}
+            nomorKalkulasi={data?.mh_nomor_kalkulasi}
+            dateKalkulasi={data?.mh_date_kalkulasi}
+            userKalkulasi={data?.user_kalkulasi || data?.mh_apv_usr}
+            salesNama={data?.sales_nama}
+            userCreate={data?.user_create}
           />
 
           {/* Card 5: Lampiran Gambar */}
@@ -797,23 +1220,31 @@ const styles = StyleSheet.create({
   topNav: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 10,
   },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: '#fff',
+  headerTextWrap: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    ...PENAWARAN_SHADOW.card,
+  },
+  headerRightSpacer: {
+    minWidth: 74,
+  },
+  backBtn: {
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: THEME.line,
   },
   navTitle: {
     fontSize: 17,
     fontWeight: '800',
     color: THEME.ink,
+    textAlign: 'center',
   },
   content: {
     paddingHorizontal: 14,
@@ -870,7 +1301,7 @@ const styles = StyleSheet.create({
   },
   statusDescText: {
     fontSize: 12.5,
-    color: '#0369a1',
+    color: THEME.info,
   },
   metaRow: {
     flexDirection: 'row',
@@ -887,7 +1318,8 @@ const styles = StyleSheet.create({
   },
   metaValue: {
     fontWeight: '700',
-    color: THEME.ink,
+    color: THEME.muted,
+    fontSize: 12,
   },
 
   // General Card
@@ -1234,5 +1666,11 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '800',
     fontSize: 13,
+  },
+  backBtnText: {
+    color: THEME.primary,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 0.2,
   },
 });

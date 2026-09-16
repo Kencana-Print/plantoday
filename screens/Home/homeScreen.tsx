@@ -430,6 +430,7 @@ export default function HomeScreen({ navigation }: any) {
       BELUM: 0,
       MINTA: 0,
       WAIT: 0,
+      NEGO: 0,
       DONE: 0,
       CANCEL: 0,
     });
@@ -2364,6 +2365,26 @@ export default function HomeScreen({ navigation }: any) {
                           </Text>
                         </View>
                       )}
+                      {phStatusCounts.NEGO > 0 && (
+                        <View
+                          style={[
+                            styles.breakdownChip,
+                            {
+                              backgroundColor: `${COMPANY_STATUS_COLORS.NEGO.base}1A`,
+                              borderColor: `${COMPANY_STATUS_COLORS.NEGO.base}40`,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.breakdownChipText,
+                              { color: COMPANY_STATUS_COLORS.NEGO.text },
+                            ]}
+                          >
+                            NEGO: {phStatusCounts.NEGO}
+                          </Text>
+                        </View>
+                      )}
                       {phStatusCounts.DONE > 0 && (
                         <View
                           style={[
@@ -2412,6 +2433,7 @@ export default function HomeScreen({ navigation }: any) {
                         phStatusCounts.BELUM +
                         phStatusCounts.MINTA +
                         phStatusCounts.WAIT +
+                        phStatusCounts.NEGO +
                         phStatusCounts.DONE +
                         phStatusCounts.CANCEL;
                       return total > 0 ? (
@@ -2448,6 +2470,15 @@ export default function HomeScreen({ navigation }: any) {
                                 flex: phStatusCounts.WAIT,
                                 backgroundColor:
                                   COMPANY_STATUS_COLORS.WAIT.base,
+                              }}
+                            />
+                          )}
+                          {phStatusCounts.NEGO > 0 && (
+                            <View
+                              style={{
+                                flex: phStatusCounts.NEGO,
+                                backgroundColor:
+                                  COMPANY_STATUS_COLORS.NEGO.base,
                               }}
                             />
                           )}
@@ -3572,6 +3603,33 @@ export default function HomeScreen({ navigation }: any) {
                   >
                     <Text style={styles.statusBadgeText}>
                       {phStatusCounts.WAIT}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.statusItem}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <MaterialIcons
+                      name="handshake"
+                      size={16}
+                      color={COMPANY_STATUS_COLORS.NEGO.base}
+                    />
+                    <Text style={styles.statusLabel}>Nego</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      { backgroundColor: COMPANY_STATUS_COLORS.NEGO.base },
+                    ]}
+                  >
+                    <Text style={styles.statusBadgeText}>
+                      {phStatusCounts.NEGO}
                     </Text>
                   </View>
                 </View>

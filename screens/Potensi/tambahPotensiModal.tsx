@@ -59,14 +59,18 @@ export default function TambahPotensiModal({
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [rawKandidat, setRawKandidat] = useState<PotensiKandidatItem[]>([]);
-  const [activeTab, setActiveTab] = useState<'ALL' | 'PENAWARAN' | 'MAP'>('ALL');
-  const [search, setSearch] = useState('');
-  const [selectedItems, setSelectedItems] = useState<Map<string, PotensiKandidatItem>>(
-    new Map(),
+  const [activeTab, setActiveTab] = useState<'ALL' | 'PENAWARAN' | 'MAP'>(
+    'ALL',
   );
+  const [search, setSearch] = useState('');
+  const [selectedItems, setSelectedItems] = useState<
+    Map<string, PotensiKandidatItem>
+  >(new Map());
 
   const getItemKey = (item: PotensiKandidatItem): string => {
-    return `${item.tipe_sumber}_${item.pen_nomor || ''}_${item.mspk_nomor || ''}_${item.item_id || ''}_${item.nama_item}`;
+    return `${item.tipe_sumber}_${item.pen_nomor || ''}_${
+      item.mspk_nomor || ''
+    }_${item.item_id || ''}_${item.nama_item}`;
   };
 
   const fetchKandidat = useCallback(
@@ -86,7 +90,8 @@ export default function TambahPotensiModal({
       } catch (err: any) {
         console.error('[TambahPotensiModal][Error]', err);
         const msg =
-          err?.response?.data?.message || 'Gagal memuat daftar kandidat potensi';
+          err?.response?.data?.message ||
+          'Gagal memuat daftar kandidat potensi';
         Toast.show({
           type: 'glassError',
           text1: 'Error',
@@ -229,7 +234,9 @@ export default function TambahPotensiModal({
       Toast.show({
         type: 'glassSuccess',
         text1: 'Berhasil Disimpan',
-        text2: `${res.data?.length || itemsPayload.length} item berhasil masuk ke Potensi`,
+        text2: `${
+          res.data?.length || itemsPayload.length
+        } item berhasil masuk ke Potensi`,
       });
 
       onSuccess();
@@ -261,7 +268,9 @@ export default function TambahPotensiModal({
         <View style={styles.cardTopRow}>
           {/* Checkbox */}
           <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
-            {isSelected && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
+            {isSelected && (
+              <MaterialIcons name="check" size={14} color="#FFFFFF" />
+            )}
           </View>
 
           {/* Type Tag */}
@@ -416,7 +425,10 @@ export default function TambahPotensiModal({
                     style={{ marginRight: 4 }}
                   />
                   <Text
-                    style={[styles.tabBtnText, active && styles.tabBtnTextActive]}
+                    style={[
+                      styles.tabBtnText,
+                      active && styles.tabBtnTextActive,
+                    ]}
                   >
                     {tab.label} ({tab.count})
                   </Text>
@@ -450,7 +462,11 @@ export default function TambahPotensiModal({
           </TouchableOpacity>
 
           <Text style={styles.itemCountText}>
-            Tampil: <Text style={{ fontWeight: '700', color: THEME.ink }}>{filteredList.length}</Text> item
+            Tampil:{' '}
+            <Text style={{ fontWeight: '700', color: THEME.ink }}>
+              {filteredList.length}
+            </Text>{' '}
+            item
           </Text>
         </View>
 
@@ -476,7 +492,11 @@ export default function TambahPotensiModal({
             }
             ListEmptyComponent={
               <View style={styles.emptyBox}>
-                <MaterialIcons name="check-circle" size={48} color={THEME.muted} />
+                <MaterialIcons
+                  name="not-interested"
+                  size={48}
+                  color={THEME.danger}
+                />
                 <Text style={styles.emptyTitle}>Tidak Ada Kandidat</Text>
                 <Text style={styles.emptySubtitle}>
                   {search.trim() || activeTab !== 'ALL'
@@ -522,7 +542,11 @@ export default function TambahPotensiModal({
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
-                  <MaterialIcons name="playlist-add-check" size={20} color="#FFFFFF" />
+                  <MaterialIcons
+                    name="playlist-add-check"
+                    size={20}
+                    color="#FFFFFF"
+                  />
                   <Text style={styles.btnSubmitText}>Simpan ke Potensi</Text>
                 </>
               )}
