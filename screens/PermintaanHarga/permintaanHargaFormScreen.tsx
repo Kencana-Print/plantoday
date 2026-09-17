@@ -648,15 +648,76 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [searchGarmenCetak, setSearchGarmenCetak] = useState<string>('');
   const [selectedCetakMasterItem, setSelectedCetakMasterItem] =
     useState<any>(null);
+  const [customCetakBiaya, setCustomCetakBiaya] = useState<string>('');
   const [cetakActiveCategory, setCetakActiveCategory] = useState<
-    'SABLON' | 'SUBLIM'
+    'SABLON' | 'SUBLIM' | 'DTF' | 'BORDIR'
   >('SABLON');
+
   const [sablonSubCategory, setSablonSubCategory] = useState<
     'ALL' | 'MEDIUM' | 'RUBBER'
   >('ALL');
 
   const [garmenTambahanMaster, setGarmenTambahanMaster] = useState<any[]>([]);
   const [garmenCetakMaster, setGarmenCetakMaster] = useState<any[]>([]);
+
+  // State Kalkulator Ukuran DTF & BORDIR (Murni: Panjang, Lebar, Tarif)
+  const [dtfBordirPanjang, setDtfBordirPanjang] = useState<string>('10');
+  const [dtfBordirLebar, setDtfBordirLebar] = useState<string>('8');
+  const [dtfBordirTarifCm, setDtfBordirTarifCm] = useState<string>('');
+
+  const currentDtfBordirCalc = useMemo(() => {
+    const isDtf = cetakActiveCategory === 'DTF';
+    const isBordir = cetakActiveCategory === 'BORDIR';
+    if (!isDtf && !isBordir) return null;
+
+    const masterItem = garmenCetakMaster.find(
+      (c: any) =>
+        (c.mhb_jenis || c.jenis || '').toUpperCase() === cetakActiveCategory,
+    );
+    const defaultTarif = Number(masterItem?.mhb_cm || (isDtf ? 25 : 90));
+    const minTarif = Number(masterItem?.mhb_min || (isDtf ? 1000 : 2500));
+
+    const panjang = toNumDecimal(dtfBordirPanjang);
+    const lebar = toNumDecimal(dtfBordirLebar);
+    const luas = panjang * lebar;
+    const rawTarif =
+      dtfBordirTarifCm !== '' ? toNumDecimal(dtfBordirTarifCm) : defaultTarif;
+    const isTarifUnderDefault =
+      dtfBordirTarifCm !== '' && rawTarif < defaultTarif;
+    const tarifCm = Math.max(defaultTarif, rawTarif);
+
+    const biayaMurni = luas * tarifCm;
+    const isMinApplied = luas > 0 && biayaMurni < minTarif;
+    const biayaPerPcs =
+      luas > 0 ? (isMinApplied ? minTarif : Math.round(biayaMurni)) : 0;
+    const qtyOrder = toNumCurrency(mh_jmlorder);
+    const totalOrder = biayaPerPcs * qtyOrder;
+
+    return {
+      isDtf,
+      isBordir,
+      panjang,
+      lebar,
+      luas,
+      tarifCm,
+      rawTarif,
+      isTarifUnderDefault,
+      defaultTarif,
+      minTarif,
+      biayaMurni,
+      isMinApplied,
+      biayaPerPcs,
+      totalOrder,
+      qtyOrder,
+    };
+  }, [
+    cetakActiveCategory,
+    garmenCetakMaster,
+    dtfBordirPanjang,
+    dtfBordirLebar,
+    dtfBordirTarifCm,
+    mh_jmlorder,
+  ]);
   const [garmenSelectedTambahan, setGarmenSelectedTambahan] = useState<
     Array<{ ket: string; tarif: number }>
   >([]);
@@ -4227,12 +4288,20 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                               selectedCetakMasterItem.mhb_ket ||
                               selectedCetakMasterItem.ket ||
                               selectedCetakMasterItem.nama
-                            } (Rp ${Number(
-                              selectedCetakMasterItem.mhb_biaya ||
-                                selectedCetakMasterItem.biaya ||
-                                0,
-                            ).toLocaleString('id-ID')})`
-                          : 'Pilih Cetak / Sablon (Opsional)...'}
+                            } ${
+                              Number(
+                                selectedCetakMasterItem.mhb_biaya ||
+                                  selectedCetakMasterItem.biaya ||
+                                  0,
+                              ) > 0
+                                ? `(Rp ${Number(
+                                    selectedCetakMasterItem.mhb_biaya ||
+                                      selectedCetakMasterItem.biaya ||
+                                      0,
+                                  ).toLocaleString('id-ID')})`
+                                : '(Custom/Pcs)'
+                            }`
+                          : 'Pilih Cetak...'}
                       </Text>
                       <MaterialIcons
                         name="arrow-drop-down"
@@ -4263,17 +4332,34 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                           selectedCetakMasterItem.mhb_ket ||
                           selectedCetakMasterItem.ket ||
                           selectedCetakMasterItem.nama;
-                        const biaya = Number(
+                        const defaultBiaya = Number(
                           selectedCetakMasterItem.mhb_biaya ||
                             selectedCetakMasterItem.biaya ||
                             0,
                         );
+                        const biaya =
+                          customCetakBiaya !== ''
+                            ? toNumCurrency(customCetakBiaya)
+                            : defaultBiaya;
+
+                        if (
+                          biaya <= 0 &&
+                          (jenis === 'DTF' || jenis === 'BORDIR')
+                        ) {
+                          Toast.show({
+                            type: 'glassError',
+                            text1: 'Biaya Belum Diisi',
+                            text2: `Mohon masukkan nominal biaya per pcs untuk ${jenis}`,
+                          });
+                          return;
+                        }
 
                         setGarmenSelectedCetak(prev => [
                           ...prev,
                           { jenis, ket, biaya },
                         ]);
                         setSelectedCetakMasterItem(null);
+                        setCustomCetakBiaya('');
                         Toast.show({
                           type: 'glassSuccess',
                           text1: 'Item Cetak Ditambahkan',
@@ -4287,6 +4373,70 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       <MaterialIcons name="add" size={22} color="#fff" />
                     </TouchableOpacity>
                   </View>
+
+                  {/* Input Biaya per Pcs jika memilih item yang butuh penyesuaian tarif */}
+                  {selectedCetakMasterItem && (
+                    <View
+                      style={{
+                        marginTop: 8,
+                        padding: 10,
+                        backgroundColor: '#faf5ff',
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: '#e9d5ff',
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: 4,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '600',
+                            color: '#6b21a8',
+                          }}
+                        >
+                          Biaya{' '}
+                          {selectedCetakMasterItem.mhb_jenis ||
+                            selectedCetakMasterItem.jenis}{' '}
+                          per Pcs (Rp)
+                        </Text>
+                        {Number(selectedCetakMasterItem.mhb_cm || 0) > 0 && (
+                          <Text style={{ fontSize: 11, color: '#7c3aed' }}>
+                            Min. Rp{' '}
+                            {Number(
+                              selectedCetakMasterItem.mhb_min || 0,
+                            ).toLocaleString('id-ID')}{' '}
+                            (Rp {selectedCetakMasterItem.mhb_cm}/cm²)
+                          </Text>
+                        )}
+                      </View>
+                      <TextInput
+                        style={[
+                          styles.input,
+                          {
+                            height: 40,
+                            fontSize: 13,
+                            backgroundColor: '#ffffff',
+                          },
+                        ]}
+                        placeholder="Masukkan biaya per pcs (Rp)"
+                        placeholderTextColor="#94a3b8"
+                        keyboardType="numeric"
+                        value={
+                          customCetakBiaya
+                            ? formatThousandsId(customCetakBiaya)
+                            : ''
+                        }
+                        onChangeText={v => setCustomCetakBiaya(onlyDigits(v))}
+                      />
+                    </View>
+                  )}
 
                   {/* Ringkasan Item Cetak Terpilih */}
                   {garmenSelectedCetak.length > 0 && (
@@ -6419,7 +6569,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
             >
               <View>
                 <Text style={styles.modalHeaderTitle}>
-                  Pilih Sablon / Sublim
+                  Pilih Sablon / Sublim / DTF / Bordir
                 </Text>
                 <Text style={styles.modalHeaderSub}>
                   Tarif bahan {garmenKategoriKain.toUpperCase()} (x{' '}
@@ -6434,7 +6584,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
               </TouchableOpacity>
             </View>
 
-            {/* Tab Kategori Minimalis (Sablon vs Sublim) */}
+            {/* Tab Kategori Minimalis (Sablon, Sublim, DTF, Bordir) */}
             <View
               style={{
                 flexDirection: 'row',
@@ -6444,229 +6594,619 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 marginHorizontal: 16,
                 marginTop: 10,
                 marginBottom: 8,
+                gap: 2,
               }}
             >
-              <TouchableOpacity
-                style={{
-                  flex: 1,
-                  paddingVertical: 7,
-                  borderRadius: 6,
-                  backgroundColor:
-                    cetakActiveCategory === 'SABLON'
-                      ? '#ffffff'
-                      : 'transparent',
-                  alignItems: 'center',
-                  shadowColor:
-                    cetakActiveCategory === 'SABLON' ? '#000' : 'transparent',
-                  shadowOffset: { width: 0, height: 1 },
-                  shadowOpacity: 0.08,
-                  shadowRadius: 2,
-                  elevation: cetakActiveCategory === 'SABLON' ? 1 : 0,
-                }}
-                onPress={() => {
-                  setCetakActiveCategory('SABLON');
-                  setSearchGarmenCetak('');
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight:
-                      cetakActiveCategory === 'SABLON' ? '700' : '500',
-                    color:
-                      cetakActiveCategory === 'SABLON' ? THEME.ink : '#64748b',
-                  }}
-                >
-                  Sablon
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={{
-                  flex: 1,
-                  paddingVertical: 7,
-                  borderRadius: 6,
-                  backgroundColor:
-                    cetakActiveCategory === 'SUBLIM'
-                      ? '#ffffff'
-                      : 'transparent',
-                  alignItems: 'center',
-                  shadowColor:
-                    cetakActiveCategory === 'SUBLIM' ? '#000' : 'transparent',
-                  shadowOffset: { width: 0, height: 1 },
-                  shadowOpacity: 0.08,
-                  shadowRadius: 2,
-                  elevation: cetakActiveCategory === 'SUBLIM' ? 1 : 0,
-                }}
-                onPress={() => {
-                  setCetakActiveCategory('SUBLIM');
-                  setSearchGarmenCetak('');
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight:
-                      cetakActiveCategory === 'SUBLIM' ? '700' : '500',
-                    color:
-                      cetakActiveCategory === 'SUBLIM' ? THEME.ink : '#64748b',
-                  }}
-                >
-                  Sublim
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Sub-filter sederhana khusus Sablon */}
-            {cetakActiveCategory === 'SABLON' && (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  paddingHorizontal: 16,
-                  gap: 6,
-                  marginBottom: 8,
-                }}
-              >
-                {(
-                  [
-                    { key: 'ALL', label: 'Semua' },
-                    { key: 'MEDIUM', label: 'Medium' },
-                    { key: 'RUBBER', label: 'Rubber' },
-                  ] as const
-                ).map(sub => {
-                  const isActive = sablonSubCategory === sub.key;
-                  return (
-                    <TouchableOpacity
-                      key={sub.key}
-                      onPress={() => setSablonSubCategory(sub.key)}
-                      style={{
-                        paddingHorizontal: 10,
-                        paddingVertical: 4,
-                        borderRadius: 6,
-                        backgroundColor: isActive ? '#f5f3ff' : '#ffffff',
-                        borderWidth: 1,
-                        borderColor: isActive ? '#c4b5fd' : '#e2e8f0',
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: isActive ? '700' : '500',
-                          color: isActive ? '#6d28d9' : '#64748b',
-                        }}
-                      >
-                        {sub.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-
-            {/* Kotak Pencarian Sederhana */}
-            <View style={styles.modalSearchArea}>
-              <View style={styles.modalSearchBox}>
-                <MaterialIcons
-                  name="search"
-                  size={20}
-                  color="#64748b"
-                  style={{ marginRight: 6 }}
-                />
-                <TextInput
-                  style={styles.modalSearchInput}
-                  placeholder="Cari Jenis / Ukuran"
-                  placeholderTextColor="#94a3b8"
-                  value={searchGarmenCetak}
-                  onChangeText={setSearchGarmenCetak}
-                />
-                {searchGarmenCetak ? (
-                  <TouchableOpacity onPress={() => setSearchGarmenCetak('')}>
-                    <MaterialIcons name="cancel" size={18} color="#94a3b8" />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </View>
-
-            {/* List Item Bersih & Ringan */}
-            <FlatList
-              data={garmenCetakMaster.filter((cItem: any) => {
-                const j = (cItem.mhb_jenis || cItem.jenis || '').toUpperCase();
-                if (j !== cetakActiveCategory) return false;
-
-                const ket = (
-                  cItem.mhb_ket ||
-                  cItem.ket ||
-                  cItem.nama ||
-                  ''
-                ).toUpperCase();
-
-                if (
-                  cetakActiveCategory === 'SABLON' &&
-                  sablonSubCategory !== 'ALL'
-                ) {
-                  if (!ket.includes(sablonSubCategory)) return false;
-                }
-
-                if (searchGarmenCetak.trim()) {
-                  return ket
-                    .toLowerCase()
-                    .includes(searchGarmenCetak.toLowerCase());
-                }
-
-                return true;
-              })}
-              keyExtractor={(item, index) => String(item.mhb_id || index)}
-              contentContainerStyle={{ paddingHorizontal: 16 }}
-              renderItem={({ item }) => {
-                const ket = item.mhb_ket || item.ket || item.nama || '';
-                const biaya = Number(item.mhb_biaya || item.biaya || 0);
-
+              {(
+                [
+                  { key: 'SABLON', label: 'Sablon' },
+                  { key: 'SUBLIM', label: 'Sublim' },
+                  { key: 'DTF', label: 'DTF' },
+                  { key: 'BORDIR', label: 'Bordir' },
+                ] as const
+              ).map(tab => {
+                const isActive = cetakActiveCategory === tab.key;
                 return (
                   <TouchableOpacity
+                    key={tab.key}
                     style={{
-                      flexDirection: 'row',
+                      flex: 1,
+                      paddingVertical: 7,
+                      borderRadius: 6,
+                      backgroundColor: isActive ? '#ffffff' : 'transparent',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingVertical: 11,
-                      borderBottomWidth: 1,
-                      borderBottomColor: '#f1f5f9',
+                      shadowColor: isActive ? '#000' : 'transparent',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.08,
+                      shadowRadius: 2,
+                      elevation: isActive ? 1 : 0,
                     }}
                     onPress={() => {
-                      setSelectedCetakMasterItem(item);
-                      setModalGarmenCetakVisible(false);
+                      setCetakActiveCategory(tab.key);
+                      setSearchGarmenCetak('');
                     }}
                   >
                     <Text
                       style={{
-                        flex: 1,
-                        fontSize: 13,
-                        fontWeight: '500',
-                        color: THEME.ink,
-                        marginRight: 12,
+                        fontSize: 12,
+                        fontWeight: isActive ? '700' : '500',
+                        color: isActive ? THEME.ink : '#64748b',
                       }}
                     >
-                      {ket}
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* TAMPILAN 1: KALKULATOR UKURAN KHUSUS DTF & BORDIR (RINGKAS & FOKUS) */}
+            {(cetakActiveCategory === 'DTF' ||
+              cetakActiveCategory === 'BORDIR') &&
+            currentDtfBordirCalc ? (
+              <ScrollView
+                style={{ maxHeight: 420 }}
+                contentContainerStyle={{
+                  paddingHorizontal: 16,
+                  paddingBottom: 16,
+                }}
+                keyboardShouldPersistTaps="handled"
+              >
+                {/* Input Tarif per cm² (Tidak bisa di bawah defaultTarif) */}
+                <View
+                  style={{
+                    marginBottom: 12,
+                    backgroundColor: currentDtfBordirCalc.isTarifUnderDefault
+                      ? '#fff1f2'
+                      : '#f8fafc',
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: currentDtfBordirCalc.isTarifUnderDefault
+                      ? '#fca5a5'
+                      : '#e2e8f0',
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '600',
+                          color: '#334155',
+                        }}
+                      >
+                        Tarif / cm²
+                      </Text>
+                      <Text style={{ fontSize: 10, color: '#64748b' }}>
+                        Minimal: Rp {currentDtfBordirCalc.defaultTarif} /cm²
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.input,
+                        {
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          width: 110,
+                          height: 38,
+                          paddingHorizontal: 8,
+                          paddingVertical: 0,
+                          backgroundColor: '#ffffff',
+                          borderColor: currentDtfBordirCalc.isTarifUnderDefault
+                            ? '#ef4444'
+                            : '#cbd5e1',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '700',
+                          color: '#64748b',
+                          marginRight: 4,
+                        }}
+                      >
+                        Rp
+                      </Text>
+                      <TextInput
+                        style={{
+                          flex: 1,
+                          height: '100%',
+                          padding: 0,
+                          fontSize: 14,
+                          fontWeight: '700',
+                          textAlign: 'right',
+                          color: THEME.ink,
+                        }}
+                        keyboardType="numeric"
+                        placeholder={formatThousandsId(
+                          currentDtfBordirCalc.defaultTarif,
+                        )}
+                        placeholderTextColor="#94a3b8"
+                        value={
+                          dtfBordirTarifCm !== ''
+                            ? formatThousandsId(toNumCurrency(dtfBordirTarifCm))
+                            : ''
+                        }
+                        onChangeText={v => setDtfBordirTarifCm(onlyDigits(v))}
+                        onBlur={() => {
+                          if (
+                            dtfBordirTarifCm !== '' &&
+                            toNumCurrency(dtfBordirTarifCm) <
+                              currentDtfBordirCalc.defaultTarif
+                          ) {
+                            setDtfBordirTarifCm(
+                              String(currentDtfBordirCalc.defaultTarif),
+                            );
+                            Toast.show({
+                              type: 'glassError',
+                              text1: 'Tarif di Bawah Standar Master',
+                              text2: `Tarif per cm² minimal Rp ${formatThousandsId(
+                                currentDtfBordirCalc.defaultTarif,
+                              )}/cm²`,
+                            });
+                          }
+                        }}
+                      />
+                    </View>
+                  </View>
+                  {currentDtfBordirCalc.isTarifUnderDefault && (
+                    <Text
+                      style={{
+                        fontSize: 10.5,
+                        color: '#b91c1c',
+                        fontWeight: '600',
+                        marginTop: 4,
+                      }}
+                    >
+                      ⚠️ Tarif minimal Rp {currentDtfBordirCalc.defaultTarif}
+                      /cm².
+                    </Text>
+                  )}
+                </View>
+                {/* Input Ukuran Panjang x Lebar */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 12,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: '#334155',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Panjang (cm)
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          height: 42,
+                          fontSize: 15,
+                          fontWeight: '700',
+                          textAlign: 'center',
+                          backgroundColor: '#ffffff',
+                        },
+                      ]}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      value={dtfBordirPanjang}
+                      onChangeText={v =>
+                        setDtfBordirPanjang(
+                          v.replace(/,/g, '.').replace(/[^0-9.]/g, ''),
+                        )
+                      }
+                    />
+                  </View>
+
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: '700',
+                      color: '#94a3b8',
+                      marginTop: 20,
+                    }}
+                  >
+                    ×
+                  </Text>
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: '#334155',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Lebar (cm)
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          height: 42,
+                          fontSize: 15,
+                          fontWeight: '700',
+                          textAlign: 'center',
+                          backgroundColor: '#ffffff',
+                        },
+                      ]}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      value={dtfBordirLebar}
+                      onChangeText={v =>
+                        setDtfBordirLebar(
+                          v.replace(/,/g, '.').replace(/[^0-9.]/g, ''),
+                        )
+                      }
+                    />
+                  </View>
+
+                  <View style={{ flex: 1.1 }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: '#334155',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Luas Total
+                    </Text>
+                    <View
+                      style={[
+                        styles.input,
+                        {
+                          height: 42,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          backgroundColor: '#f1f5f9',
+                          borderColor: '#cbd5e1',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: '700',
+                          color: '#475569',
+                        }}
+                      >
+                        {currentDtfBordirCalc.luas} cm²
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                {/* Box Live Hasil Kalkulasi */}
+                <View
+                  style={{
+                    backgroundColor: '#f5f3ff',
+                    borderRadius: 10,
+                    padding: 12,
+                    borderWidth: 1.5,
+                    borderColor: '#c4b5fd',
+                    marginBottom: 14,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        color: '#5b21b6',
+                      }}
+                    >
+                      Biaya
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: '800',
+                        color: '#6d28d9',
+                      }}
+                    >
+                      Rp{' '}
+                      {currentDtfBordirCalc.biayaPerPcs.toLocaleString('id-ID')}{' '}
+                      /Pcs
+                    </Text>
+                  </View>
+
+                  {currentDtfBordirCalc.isMinApplied && (
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        color: '#d97706',
+                        fontWeight: '600',
+                        marginBottom: 4,
+                      }}
+                    >
+                      * Kena tarif minimum (Rp{' '}
+                      {currentDtfBordirCalc.minTarif.toLocaleString('id-ID')})
+                    </Text>
+                  )}
+
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderTopWidth: 1,
+                      borderTopColor: '#e9d5ff',
+                      paddingTop: 6,
+                      marginTop: 4,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, color: '#64748b' }}>
+                      Subtotal (x {currentDtfBordirCalc.qtyOrder} pcs):
                     </Text>
                     <Text
                       style={{
                         fontSize: 13,
                         fontWeight: '700',
-                        color: '#6d28d9',
+                        color: '#4c1d95',
                       }}
                     >
-                      Rp {biaya.toLocaleString('id-ID')}
+                      Rp{' '}
+                      {currentDtfBordirCalc.totalOrder.toLocaleString('id-ID')}
                     </Text>
-                  </TouchableOpacity>
-                );
-              }}
-              ListEmptyComponent={
-                <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 13, color: '#94a3b8' }}>
-                    Item tidak ditemukan
-                  </Text>
+                  </View>
                 </View>
-              }
-            />
+                {/* Tombol Tambahkan ke Kalkulasi */}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#7c3aed',
+                    borderRadius: 10,
+                    paddingVertical: 12,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  disabled={currentDtfBordirCalc.biayaPerPcs <= 0}
+                  onPress={() => {
+                    if (currentDtfBordirCalc.biayaPerPcs <= 0) {
+                      Toast.show({
+                        type: 'glassError',
+                        text1: 'Ukuran Belum Diisi',
+                        text2: 'Mohon masukkan ukuran Panjang dan Lebar cetak',
+                      });
+                      return;
+                    }
+
+                    if (
+                      dtfBordirTarifCm !== '' &&
+                      Number(dtfBordirTarifCm) <
+                        currentDtfBordirCalc.defaultTarif
+                    ) {
+                      setDtfBordirTarifCm(
+                        String(currentDtfBordirCalc.defaultTarif),
+                      );
+                      Toast.show({
+                        type: 'glassError',
+                        text1: 'Tarif di Bawah Standar Master',
+                        text2: `Tarif per cm² minimal Rp ${currentDtfBordirCalc.defaultTarif}/cm² (tidak boleh lebih rendah)`,
+                      });
+                      return;
+                    }
+
+                    const jenis = cetakActiveCategory;
+                    const ket = `${currentDtfBordirCalc.panjang}x${currentDtfBordirCalc.lebar} cm`;
+                    const biaya = currentDtfBordirCalc.biayaPerPcs;
+
+                    setGarmenSelectedCetak(prev => [
+                      ...prev,
+                      { jenis, ket, biaya },
+                    ]);
+                    setModalGarmenCetakVisible(false);
+                    Toast.show({
+                      type: 'glassSuccess',
+                      text1: `${jenis} Berhasil Ditambahkan`,
+                      text2: `${ket} - Rp ${biaya.toLocaleString('id-ID')}/pcs`,
+                    });
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: '#ffffff',
+                      fontSize: 14,
+                      fontWeight: '700',
+                    }}
+                  >
+                    Tambah {cetakActiveCategory}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : (
+              /* TAMPILAN 2: LIST ITEM UNTUK SABLON & SUBLIM */
+              <>
+                {/* Sub-filter sederhana khusus Sablon */}
+                {cetakActiveCategory === 'SABLON' && (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      paddingHorizontal: 16,
+                      gap: 6,
+                      marginBottom: 8,
+                    }}
+                  >
+                    {(
+                      [
+                        { key: 'ALL', label: 'Semua' },
+                        { key: 'MEDIUM', label: 'Medium' },
+                        { key: 'RUBBER', label: 'Rubber' },
+                      ] as const
+                    ).map(sub => {
+                      const isActive = sablonSubCategory === sub.key;
+                      return (
+                        <TouchableOpacity
+                          key={sub.key}
+                          onPress={() => setSablonSubCategory(sub.key)}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 6,
+                            backgroundColor: isActive ? '#f5f3ff' : '#ffffff',
+                            borderWidth: 1,
+                            borderColor: isActive ? '#c4b5fd' : '#e2e8f0',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: isActive ? '700' : '500',
+                              color: isActive ? '#6d28d9' : '#64748b',
+                            }}
+                          >
+                            {sub.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Kotak Pencarian Sederhana */}
+                <View style={styles.modalSearchArea}>
+                  <View style={styles.modalSearchBox}>
+                    <MaterialIcons
+                      name="search"
+                      size={20}
+                      color="#64748b"
+                      style={{ marginRight: 6 }}
+                    />
+                    <TextInput
+                      style={styles.modalSearchInput}
+                      placeholder="Cari Jenis / Ukuran"
+                      placeholderTextColor="#94a3b8"
+                      value={searchGarmenCetak}
+                      onChangeText={setSearchGarmenCetak}
+                    />
+                    {searchGarmenCetak ? (
+                      <TouchableOpacity
+                        onPress={() => setSearchGarmenCetak('')}
+                      >
+                        <MaterialIcons
+                          name="cancel"
+                          size={18}
+                          color="#94a3b8"
+                        />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* List Item Bersih & Ringan */}
+                <FlatList
+                  data={garmenCetakMaster.filter((cItem: any) => {
+                    const j = (
+                      cItem.mhb_jenis ||
+                      cItem.jenis ||
+                      ''
+                    ).toUpperCase();
+                    if (j !== cetakActiveCategory) return false;
+
+                    const ket = (
+                      cItem.mhb_ket ||
+                      cItem.ket ||
+                      cItem.nama ||
+                      ''
+                    ).toUpperCase();
+
+                    if (
+                      cetakActiveCategory === 'SABLON' &&
+                      sablonSubCategory !== 'ALL'
+                    ) {
+                      if (!ket.includes(sablonSubCategory)) return false;
+                    }
+
+                    if (searchGarmenCetak.trim()) {
+                      return ket
+                        .toLowerCase()
+                        .includes(searchGarmenCetak.toLowerCase());
+                    }
+
+                    return true;
+                  })}
+                  keyExtractor={(item, index) => String(item.mhb_id || index)}
+                  contentContainerStyle={{ paddingHorizontal: 16 }}
+                  renderItem={({ item }) => {
+                    const jenis = (
+                      item.mhb_jenis ||
+                      item.jenis ||
+                      ''
+                    ).toUpperCase();
+                    const ket = item.mhb_ket || item.ket || item.nama || jenis;
+                    const biaya = Number(item.mhb_biaya || item.biaya || 0);
+
+                    return (
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingVertical: 11,
+                          borderBottomWidth: 1,
+                          borderBottomColor: '#f1f5f9',
+                        }}
+                        onPress={() => {
+                          setSelectedCetakMasterItem(item);
+                          setCustomCetakBiaya(biaya > 0 ? String(biaya) : '');
+                          setModalGarmenCetakVisible(false);
+                        }}
+                      >
+                        <View style={{ flex: 1, marginRight: 12 }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: '500',
+                              color: THEME.ink,
+                            }}
+                          >
+                            {ket}
+                          </Text>
+                        </View>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '700',
+                            color: '#6d28d9',
+                          }}
+                        >
+                          Rp {biaya.toLocaleString('id-ID')}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  }}
+                  ListEmptyComponent={
+                    <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 13, color: '#94a3b8' }}>
+                        Item tidak ditemukan
+                      </Text>
+                    </View>
+                  }
+                />
+              </>
+            )}
           </View>
         </View>
       </Modal>
