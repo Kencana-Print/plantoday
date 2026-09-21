@@ -38,6 +38,7 @@ export type PermintaanHargaDetail = {
   mh_jmlorder: number;
   mh_harga: number;
   mh_ongkir?: number;
+  kald_rpkirim?: number;
   mh_budget: number;
   mh_kain: string;
   mh_panjang: number;
@@ -74,6 +75,7 @@ export type PermintaanHargaPayload = {
   mh_jmlorder: number;
   mh_harga: number;
   mh_ongkir?: number;
+  kald_rpkirim?: number;
   mh_budget: number;
   mh_dateorder?: string;
   mh_kain: string;

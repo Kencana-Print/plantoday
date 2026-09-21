@@ -646,9 +646,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [modalGarmenCetakVisible, setModalGarmenCetakVisible] =
     useState<boolean>(false);
   const [searchGarmenCetak, setSearchGarmenCetak] = useState<string>('');
-  const [selectedCetakMasterItem, setSelectedCetakMasterItem] =
-    useState<any>(null);
-  const [customCetakBiaya, setCustomCetakBiaya] = useState<string>('');
+
   const [cetakActiveCategory, setCetakActiveCategory] = useState<
     'SABLON' | 'SUBLIM' | 'DTF' | 'BORDIR'
   >('SABLON');
@@ -1664,6 +1662,13 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       mh_jmlorder: toNumCurrency(mh_jmlorder),
       mh_harga: finalHargaPengajuan,
       mh_ongkir: toNumCurrency(mh_ongkir) || 0,
+      kald_rpkirim:
+        toNumCurrency(mh_jmlorder) > 0
+          ? Math.round(
+              (toNumCurrency(mh_ongkir) || 0) /
+                toNumCurrency(mh_jmlorder),
+            )
+          : toNumCurrency(mh_ongkir) || 0,
       mh_harga_kalkulasi: finalHargaKalkulasi,
       mh_ket_kalkulasi: finalKetKalkulasi,
       mh_budget: 0,
@@ -1677,14 +1682,14 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       mh_sublim,
       mh_warna: mh_divisi === '4' ? garmenWarna.toUpperCase() : '',
       mh_ket,
-      ...(mh_divisi === '4' && garmenCalcResult
+      ...(mh_divisi === '4'
         ? {
             kal_kh_kode: garmenKodeModel,
-            kal_rpallowance: garmenCalcResult.komponenBiaya?.allowanceRp || 0,
-            kal_allowance: garmenCalcResult.komponenBiaya?.allowancePersen || 0,
-            kal_rplaba: garmenCalcResult.strataAktif?.marginRp || 0,
-            kal_laba: garmenCalcResult.strataAktif?.persen || 0,
-            kal_ketbeli: garmenCalcResult.babaran?.body
+            kal_rpallowance: garmenCalcResult?.komponenBiaya?.allowanceRp || 0,
+            kal_allowance: garmenCalcResult?.komponenBiaya?.allowancePersen || 0,
+            kal_rplaba: garmenCalcResult?.strataAktif?.marginRp || 0,
+            kal_laba: garmenCalcResult?.strataAktif?.persen || 0,
+            kal_ketbeli: garmenCalcResult?.babaran?.body
               ? `${garmenJenisKain} ${garmenCalcResult.babaran.body}/kg`
               : garmenJenisKain,
             garmen_model: garmenKodeModel,
@@ -4246,197 +4251,43 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       marginBottom: 4,
                     }}
                   >
-                    <Text style={styles.label}>Cetak</Text>
+                    <Text style={styles.label}>Cetak (Sablon / DTF / Bordir / Sublim)</Text>
                   </View>
 
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
+                  <TouchableOpacity
+                    style={[
+                      styles.input,
+                      {
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      },
+                    ]}
+                    onPress={() => setModalGarmenCetakVisible(true)}
+                    activeOpacity={0.8}
                   >
-                    <TouchableOpacity
-                      style={[
-                        styles.input,
-                        {
-                          flex: 1,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                        },
-                      ]}
-                      onPress={() => setModalGarmenCetakVisible(true)}
-                      activeOpacity={0.8}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 14,
-                          color: selectedCetakMasterItem
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        color:
+                          garmenSelectedCetak.length > 0
                             ? THEME.ink
                             : '#94a3b8',
-                          fontWeight: selectedCetakMasterItem ? '600' : '400',
-                        }}
-                        numberOfLines={1}
-                      >
-                        {selectedCetakMasterItem
-                          ? `${
-                              selectedCetakMasterItem.mhb_jenis ||
-                              selectedCetakMasterItem.jenis ||
-                              'CETAK'
-                            } - ${
-                              selectedCetakMasterItem.mhb_ket ||
-                              selectedCetakMasterItem.ket ||
-                              selectedCetakMasterItem.nama
-                            } ${
-                              Number(
-                                selectedCetakMasterItem.mhb_biaya ||
-                                  selectedCetakMasterItem.biaya ||
-                                  0,
-                              ) > 0
-                                ? `(Rp ${Number(
-                                    selectedCetakMasterItem.mhb_biaya ||
-                                      selectedCetakMasterItem.biaya ||
-                                      0,
-                                  ).toLocaleString('id-ID')})`
-                                : '(Custom/Pcs)'
-                            }`
-                          : 'Pilih Cetak...'}
-                      </Text>
-                      <MaterialIcons
-                        name="arrow-drop-down"
-                        size={24}
-                        color="#64748b"
-                      />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: selectedCetakMasterItem
-                          ? THEME.primary
-                          : '#cbd5e1',
-                        borderRadius: 10,
-                        width: 44,
-                        height: 44,
-                        justifyContent: 'center',
-                        alignItems: 'center',
+                        fontWeight:
+                          garmenSelectedCetak.length > 0 ? '600' : '400',
                       }}
-                      disabled={!selectedCetakMasterItem}
-                      onPress={() => {
-                        if (!selectedCetakMasterItem) return;
-                        const jenis =
-                          selectedCetakMasterItem.mhb_jenis ||
-                          selectedCetakMasterItem.jenis ||
-                          'CETAK';
-                        const ket =
-                          selectedCetakMasterItem.mhb_ket ||
-                          selectedCetakMasterItem.ket ||
-                          selectedCetakMasterItem.nama;
-                        const defaultBiaya = Number(
-                          selectedCetakMasterItem.mhb_biaya ||
-                            selectedCetakMasterItem.biaya ||
-                            0,
-                        );
-                        const biaya =
-                          customCetakBiaya !== ''
-                            ? toNumCurrency(customCetakBiaya)
-                            : defaultBiaya;
-
-                        if (
-                          biaya <= 0 &&
-                          (jenis === 'DTF' || jenis === 'BORDIR')
-                        ) {
-                          Toast.show({
-                            type: 'glassError',
-                            text1: 'Biaya Belum Diisi',
-                            text2: `Mohon masukkan nominal biaya per pcs untuk ${jenis}`,
-                          });
-                          return;
-                        }
-
-                        setGarmenSelectedCetak(prev => [
-                          ...prev,
-                          { jenis, ket, biaya },
-                        ]);
-                        setSelectedCetakMasterItem(null);
-                        setCustomCetakBiaya('');
-                        Toast.show({
-                          type: 'glassSuccess',
-                          text1: 'Item Cetak Ditambahkan',
-                          text2: `${jenis} - ${ket} (Rp ${biaya.toLocaleString(
-                            'id-ID',
-                          )}/pcs)`,
-                        });
-                      }}
-                      activeOpacity={0.8}
+                      numberOfLines={1}
                     >
-                      <MaterialIcons name="add" size={22} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Input Biaya per Pcs jika memilih item yang butuh penyesuaian tarif */}
-                  {selectedCetakMasterItem && (
-                    <View
-                      style={{
-                        marginTop: 8,
-                        padding: 10,
-                        backgroundColor: '#faf5ff',
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: '#e9d5ff',
-                      }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          marginBottom: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            fontWeight: '600',
-                            color: '#6b21a8',
-                          }}
-                        >
-                          Biaya{' '}
-                          {selectedCetakMasterItem.mhb_jenis ||
-                            selectedCetakMasterItem.jenis}{' '}
-                          per Pcs (Rp)
-                        </Text>
-                        {Number(selectedCetakMasterItem.mhb_cm || 0) > 0 && (
-                          <Text style={{ fontSize: 11, color: '#7c3aed' }}>
-                            Min. Rp{' '}
-                            {Number(
-                              selectedCetakMasterItem.mhb_min || 0,
-                            ).toLocaleString('id-ID')}{' '}
-                            (Rp {selectedCetakMasterItem.mhb_cm}/cm²)
-                          </Text>
-                        )}
-                      </View>
-                      <TextInput
-                        style={[
-                          styles.input,
-                          {
-                            height: 40,
-                            fontSize: 13,
-                            backgroundColor: '#ffffff',
-                          },
-                        ]}
-                        placeholder="Masukkan biaya per pcs (Rp)"
-                        placeholderTextColor="#94a3b8"
-                        keyboardType="numeric"
-                        value={
-                          customCetakBiaya
-                            ? formatThousandsId(customCetakBiaya)
-                            : ''
-                        }
-                        onChangeText={v => setCustomCetakBiaya(onlyDigits(v))}
-                      />
-                    </View>
-                  )}
+                      {garmenSelectedCetak.length > 0
+                        ? `${garmenSelectedCetak.length} Item Cetak Dipilih`
+                        : 'Pilih Sablon / DTF / Bordir / Sublim...'}
+                    </Text>
+                    <MaterialIcons
+                      name="arrow-drop-down"
+                      size={24}
+                      color="#64748b"
+                    />
+                  </TouchableOpacity>
 
                   {/* Ringkasan Item Cetak Terpilih */}
                   {garmenSelectedCetak.length > 0 && (
@@ -7012,10 +6863,13 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     const jenis = cetakActiveCategory;
                     const ket = `${currentDtfBordirCalc.panjang}x${currentDtfBordirCalc.lebar} cm`;
                     const biaya = currentDtfBordirCalc.biayaPerPcs;
+                    const panjang = currentDtfBordirCalc.panjang;
+                    const lebar = currentDtfBordirCalc.lebar;
+                    const tarifCm = currentDtfBordirCalc.tarifCm;
 
                     setGarmenSelectedCetak(prev => [
                       ...prev,
-                      { jenis, ket, biaya },
+                      { jenis, ket, biaya, panjang, lebar, tarifCm },
                     ]);
                     setModalGarmenCetakVisible(false);
                     Toast.show({
@@ -7169,9 +7023,28 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                           borderBottomColor: '#f1f5f9',
                         }}
                         onPress={() => {
-                          setSelectedCetakMasterItem(item);
-                          setCustomCetakBiaya(biaya > 0 ? String(biaya) : '');
+                          const itemJenis = (
+                            item.mhb_jenis ||
+                            item.jenis ||
+                            cetakActiveCategory ||
+                            'CETAK'
+                          ).toUpperCase();
+                          const itemKet =
+                            item.mhb_ket || item.ket || item.nama || itemJenis;
+                          const itemBiaya = Number(
+                            item.mhb_biaya || item.biaya || 0,
+                          );
+
+                          setGarmenSelectedCetak(prev => [
+                            ...prev,
+                            { jenis: itemJenis, ket: itemKet, biaya: itemBiaya },
+                          ]);
                           setModalGarmenCetakVisible(false);
+                          Toast.show({
+                            type: 'glassSuccess',
+                            text1: `${itemJenis} Ditambahkan`,
+                            text2: `${itemKet} - Rp ${itemBiaya.toLocaleString('id-ID')}/pcs`,
+                          });
                         }}
                       >
                         <View style={{ flex: 1, marginRight: 12 }}>
