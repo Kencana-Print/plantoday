@@ -796,7 +796,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   docNumber: {
-    fontSize: 14,
+    fontSize: 10,
     fontWeight: '700',
     color: THEME.ink,
   },

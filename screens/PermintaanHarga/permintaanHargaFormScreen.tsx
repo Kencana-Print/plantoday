@@ -265,7 +265,11 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     initial?.mh_jmlorder ? String(initial.mh_jmlorder) : '',
   );
   const [mh_harga, setMhHarga] = useState(
-    initial?.mh_harga ? String(initial.mh_harga) : '',
+    initial?.mh_harga !== undefined &&
+      initial?.mh_harga !== null &&
+      initial?.mh_harga !== ''
+      ? String(initial.mh_harga)
+      : '0',
   );
   const [mh_ongkir, setMhOngkir] = useState(
     initial?.mh_ongkir ? String(initial.mh_ongkir) : '',
@@ -658,10 +662,11 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [garmenTambahanMaster, setGarmenTambahanMaster] = useState<any[]>([]);
   const [garmenCetakMaster, setGarmenCetakMaster] = useState<any[]>([]);
 
-  // State Kalkulator Ukuran DTF & BORDIR (Murni: Panjang, Lebar, Tarif)
+  // State Kalkulator Ukuran DTF & BORDIR (Murni: Panjang, Lebar, Tarif per cm2)
   const [dtfBordirPanjang, setDtfBordirPanjang] = useState<string>('10');
   const [dtfBordirLebar, setDtfBordirLebar] = useState<string>('8');
-  const [dtfBordirTarifCm, setDtfBordirTarifCm] = useState<string>('');
+  const [dtfTarifCm, setDtfTarifCm] = useState<string>('');
+  const [bordirTarifCm, setBordirTarifCm] = useState<string>('');
 
   const currentDtfBordirCalc = useMemo(() => {
     const isDtf = cetakActiveCategory === 'DTF';
@@ -678,10 +683,12 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     const panjang = toNumDecimal(dtfBordirPanjang);
     const lebar = toNumDecimal(dtfBordirLebar);
     const luas = panjang * lebar;
+
+    const currentTarifInput = isDtf ? dtfTarifCm : bordirTarifCm;
     const rawTarif =
-      dtfBordirTarifCm !== '' ? toNumDecimal(dtfBordirTarifCm) : defaultTarif;
+      currentTarifInput !== '' ? toNumDecimal(currentTarifInput) : defaultTarif;
     const isTarifUnderDefault =
-      dtfBordirTarifCm !== '' && rawTarif < defaultTarif;
+      currentTarifInput !== '' && rawTarif < defaultTarif;
     const tarifCm = Math.max(defaultTarif, rawTarif);
 
     const biayaMurni = luas * tarifCm;
@@ -713,7 +720,8 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     garmenCetakMaster,
     dtfBordirPanjang,
     dtfBordirLebar,
-    dtfBordirTarifCm,
+    dtfTarifCm,
+    bordirTarifCm,
     mh_jmlorder,
   ]);
   const [garmenSelectedTambahan, setGarmenSelectedTambahan] = useState<
@@ -1096,7 +1104,22 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     getCetakOptionsApi(token)
       .then((cetak: any[]) => {
         if (!isMounted) return;
-        if (Array.isArray(cetak)) setGarmenCetakMaster(cetak);
+        if (Array.isArray(cetak)) {
+          setGarmenCetakMaster(cetak);
+          const dtfItem = cetak.find(
+            (c: any) => (c.mhb_jenis || c.jenis || '').toUpperCase() === 'DTF',
+          );
+          if (dtfItem?.mhb_cm) {
+            setDtfTarifCm(String(dtfItem.mhb_cm));
+          }
+          const bordirItem = cetak.find(
+            (c: any) =>
+              (c.mhb_jenis || c.jenis || '').toUpperCase() === 'BORDIR',
+          );
+          if (bordirItem?.mhb_cm) {
+            setBordirTarifCm(String(bordirItem.mhb_cm));
+          }
+        }
       })
       .catch(() => {});
     return () => {
@@ -1501,27 +1524,6 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       });
       return;
     }
-    let currentCalc = Number(mh_harga_kalkulasi) || 0;
-    if (mh_divisi === '1' && spandukResult?.hargaSatuanPcs) {
-      currentCalc = isIncPpn
-        ? Math.round(spandukResult.hargaSatuanPcs * 1.11)
-        : Math.round(spandukResult.hargaSatuanPcs);
-    } else if (mh_divisi === '5' && mmtResult?.hargaSatuanPcs) {
-      currentCalc = isIncPpn
-        ? Math.round(mmtResult.hargaSatuanPcs * 1.11)
-        : Math.round(mmtResult.hargaSatuanPcs);
-    } else if (mh_divisi === '4' && garmenCalcResult) {
-      const rawHrg =
-        garmenCalcResult.hargaUpPerPcs ||
-        garmenCalcResult.hargaJualRevisi ||
-        garmenCalcResult.hargaJualPerPcs ||
-        garmenCalcResult.hargaJual ||
-        0;
-      currentCalc = isIncPpn ? Math.round(rawHrg * 1.11) : Math.round(rawHrg);
-    }
-    if (currentCalc > 0 && (!mh_harga || toNumCurrency(mh_harga) === 0)) {
-      setMhHarga(String(currentCalc));
-    }
     setCurrentStep(3);
   };
 
@@ -1590,9 +1592,6 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     }
 
     let finalHargaPengajuan = toNumCurrency(mh_harga);
-    if (finalHargaPengajuan <= 0 && finalHargaKalkulasi > 0) {
-      finalHargaPengajuan = finalHargaKalkulasi;
-    }
 
     if (mh_divisi === '5' && mmtIsNetto && !mmtAlasanNetto.trim()) {
       Toast.show({
@@ -1605,6 +1604,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
 
     if (
       finalHargaKalkulasi > 0 &&
+      finalHargaPengajuan > 0 &&
       finalHargaPengajuan < finalHargaKalkulasi &&
       !alasanPengajuan.trim()
     ) {
@@ -1665,8 +1665,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       kald_rpkirim:
         toNumCurrency(mh_jmlorder) > 0
           ? Math.round(
-              (toNumCurrency(mh_ongkir) || 0) /
-                toNumCurrency(mh_jmlorder),
+              (toNumCurrency(mh_ongkir) || 0) / toNumCurrency(mh_jmlorder),
             )
           : toNumCurrency(mh_ongkir) || 0,
       mh_harga_kalkulasi: finalHargaKalkulasi,
@@ -1686,7 +1685,8 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
         ? {
             kal_kh_kode: garmenKodeModel,
             kal_rpallowance: garmenCalcResult?.komponenBiaya?.allowanceRp || 0,
-            kal_allowance: garmenCalcResult?.komponenBiaya?.allowancePersen || 0,
+            kal_allowance:
+              garmenCalcResult?.komponenBiaya?.allowancePersen || 0,
             kal_rplaba: garmenCalcResult?.strataAktif?.marginRp || 0,
             kal_laba: garmenCalcResult?.strataAktif?.persen || 0,
             kal_ketbeli: garmenCalcResult?.babaran?.body
@@ -3075,7 +3075,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     }}
                   >
                     <MaterialIcons
-                      name="calculate"
+                      name="view-in-ar"
                       size={20}
                       color={THEME.primary}
                     />
@@ -4251,7 +4251,9 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       marginBottom: 4,
                     }}
                   >
-                    <Text style={styles.label}>Cetak (Sablon / DTF / Bordir / Sublim)</Text>
+                    <Text style={styles.label}>
+                      Cetak (Sablon / DTF / Bordir / Sublim)
+                    </Text>
                   </View>
 
                   <TouchableOpacity
@@ -5604,7 +5606,9 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     style={styles.currencyInputField}
                     keyboardType="numeric"
                     value={
-                      mh_harga ? formatThousandsId(toNumCurrency(mh_harga)) : ''
+                      mh_harga !== ''
+                        ? formatThousandsId(toNumCurrency(mh_harga))
+                        : '0'
                     }
                     onChangeText={val => {
                       const numeric = val.replace(/[^0-9]/g, '');
@@ -5617,8 +5621,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 <Text style={styles.totalProposedText}>
                   Total Nilai Pengajuan: Rp{' '}
                   {formatThousandsId(
-                    (toNumCurrency(mh_harga) || mh_harga_kalkulasi || 0) *
-                      toNumCurrency(mh_jmlorder),
+                    (toNumCurrency(mh_harga) || 0) * toNumCurrency(mh_jmlorder),
                   )}
                 </Text>
               </View>
@@ -6475,6 +6478,27 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     onPress={() => {
                       setCetakActiveCategory(tab.key);
                       setSearchGarmenCetak('');
+                      if (tab.key === 'DTF') {
+                        const m = garmenCetakMaster.find(
+                          (c: any) =>
+                            (c.mhb_jenis || c.jenis || '').toUpperCase() ===
+                            'DTF',
+                        );
+                        const defT = Number(m?.mhb_cm || 25);
+                        if (!dtfTarifCm || Number(dtfTarifCm) < defT) {
+                          setDtfTarifCm(String(defT));
+                        }
+                      } else if (tab.key === 'BORDIR') {
+                        const m = garmenCetakMaster.find(
+                          (c: any) =>
+                            (c.mhb_jenis || c.jenis || '').toUpperCase() ===
+                            'BORDIR',
+                        );
+                        const defT = Number(m?.mhb_cm || 90);
+                        if (!bordirTarifCm || Number(bordirTarifCm) < defT) {
+                          setBordirTarifCm(String(defT));
+                        }
+                      }
                     }}
                   >
                     <Text
@@ -6582,20 +6606,47 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         )}
                         placeholderTextColor="#94a3b8"
                         value={
-                          dtfBordirTarifCm !== ''
-                            ? formatThousandsId(toNumCurrency(dtfBordirTarifCm))
-                            : ''
+                          (cetakActiveCategory === 'DTF'
+                            ? dtfTarifCm
+                            : bordirTarifCm) !== ''
+                            ? formatThousandsId(
+                                toNumCurrency(
+                                  cetakActiveCategory === 'DTF'
+                                    ? dtfTarifCm
+                                    : bordirTarifCm,
+                                ),
+                              )
+                            : formatThousandsId(
+                                currentDtfBordirCalc.defaultTarif,
+                              )
                         }
-                        onChangeText={v => setDtfBordirTarifCm(onlyDigits(v))}
+                        onChangeText={v => {
+                          const digits = onlyDigits(v);
+                          if (cetakActiveCategory === 'DTF') {
+                            setDtfTarifCm(digits);
+                          } else {
+                            setBordirTarifCm(digits);
+                          }
+                        }}
                         onBlur={() => {
+                          const currentVal =
+                            cetakActiveCategory === 'DTF'
+                              ? dtfTarifCm
+                              : bordirTarifCm;
                           if (
-                            dtfBordirTarifCm !== '' &&
-                            toNumCurrency(dtfBordirTarifCm) <
+                            currentVal !== '' &&
+                            toNumCurrency(currentVal) <
                               currentDtfBordirCalc.defaultTarif
                           ) {
-                            setDtfBordirTarifCm(
-                              String(currentDtfBordirCalc.defaultTarif),
-                            );
+                            if (cetakActiveCategory === 'DTF') {
+                              setDtfTarifCm(
+                                String(currentDtfBordirCalc.defaultTarif),
+                              );
+                            } else {
+                              setBordirTarifCm(
+                                String(currentDtfBordirCalc.defaultTarif),
+                              );
+                            }
                             Toast.show({
                               type: 'glassError',
                               text1: 'Tarif di Bawah Standar Master',
@@ -6844,14 +6895,24 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       return;
                     }
 
+                    const activeTarifCurrent =
+                      cetakActiveCategory === 'DTF'
+                        ? dtfTarifCm
+                        : bordirTarifCm;
                     if (
-                      dtfBordirTarifCm !== '' &&
-                      Number(dtfBordirTarifCm) <
+                      activeTarifCurrent !== '' &&
+                      Number(activeTarifCurrent) <
                         currentDtfBordirCalc.defaultTarif
                     ) {
-                      setDtfBordirTarifCm(
-                        String(currentDtfBordirCalc.defaultTarif),
-                      );
+                      if (cetakActiveCategory === 'DTF') {
+                        setDtfTarifCm(
+                          String(currentDtfBordirCalc.defaultTarif),
+                        );
+                      } else {
+                        setBordirTarifCm(
+                          String(currentDtfBordirCalc.defaultTarif),
+                        );
+                      }
                       Toast.show({
                         type: 'glassError',
                         text1: 'Tarif di Bawah Standar Master',
@@ -7037,13 +7098,19 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
 
                           setGarmenSelectedCetak(prev => [
                             ...prev,
-                            { jenis: itemJenis, ket: itemKet, biaya: itemBiaya },
+                            {
+                              jenis: itemJenis,
+                              ket: itemKet,
+                              biaya: itemBiaya,
+                            },
                           ]);
                           setModalGarmenCetakVisible(false);
                           Toast.show({
                             type: 'glassSuccess',
                             text1: `${itemJenis} Ditambahkan`,
-                            text2: `${itemKet} - Rp ${itemBiaya.toLocaleString('id-ID')}/pcs`,
+                            text2: `${itemKet} - Rp ${itemBiaya.toLocaleString(
+                              'id-ID',
+                            )}/pcs`,
                           });
                         }}
                       >

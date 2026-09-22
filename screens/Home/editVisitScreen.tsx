@@ -13,7 +13,10 @@ import {
   StatusBar,
   Image,
   PermissionsAndroid,
+  Modal,
+  Linking,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import LinearGradient from 'react-native-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Toast from 'react-native-toast-message';
@@ -234,6 +237,7 @@ export default function EditVisitScreen({ navigation, route }: any) {
   const [showDate, setShowDate] = useState(false);
 
   const [uploadPending, setUploadPending] = useState(false);
+  const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
 
   // Prefill dari route params
   useEffect(() => {
@@ -324,6 +328,112 @@ export default function EditVisitScreen({ navigation, route }: any) {
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 },
     );
   };
+
+  const latNum = useMemo(() => parseFloat(String(latitude || '')), [latitude]);
+  const lngNum = useMemo(
+    () => parseFloat(String(longitude || '')),
+    [longitude],
+  );
+  const hasValidCoord = useMemo(
+    () =>
+      !isNaN(latNum) &&
+      !isNaN(lngNum) &&
+      latNum !== 0 &&
+      lngNum !== 0 &&
+      latNum >= -90 &&
+      latNum <= 90 &&
+      lngNum >= -180 &&
+      lngNum <= 180,
+    [latNum, lngNum],
+  );
+
+  const bukaGoogleMaps = () => {
+    if (!hasValidCoord) {
+      Toast.show({
+        type: 'glassError',
+        text1: 'Koordinat Tidak Valid',
+        text2: 'Latitude dan Longitude belum tersedia',
+      });
+      return;
+    }
+    const label = encodeURIComponent(customer || 'Lokasi Visit');
+    const url = Platform.select({
+      ios: `maps:0,0?q=${latNum},${lngNum}`,
+      android: `geo:${latNum},${lngNum}?q=${latNum},${lngNum}(${label})`,
+      default: `https://www.google.com/maps/search/?api=1&query=${latNum},${lngNum}`,
+    });
+
+    Linking.canOpenURL(url)
+      .then(supported => {
+        if (supported) {
+          Linking.openURL(url);
+        } else {
+          Linking.openURL(
+            `https://www.google.com/maps/search/?api=1&query=${latNum},${lngNum}`,
+          );
+        }
+      })
+      .catch(() => {
+        Linking.openURL(
+          `https://www.google.com/maps/search/?api=1&query=${latNum},${lngNum}`,
+        );
+      });
+  };
+
+  const mapHtml = useMemo(() => {
+    if (!hasValidCoord) return '';
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html, body, #map { width: 100%; height: 100%; background: #f1f5f9; }
+          .leaflet-control-attribution { display: none !important; }
+          .leaflet-touch .leaflet-control-zoom-in,
+          .leaflet-touch .leaflet-control-zoom-out {
+            font-size: 16px;
+            width: 32px;
+            height: 32px;
+            line-height: 30px;
+          }
+          .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <script>
+          try {
+            var map = L.map('map', {
+              center: [${latNum}, ${lngNum}],
+              zoom: 16,
+              zoomControl: true,
+              attributionControl: false,
+              scrollWheelZoom: true,
+              touchZoom: true
+            });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              maxZoom: 19
+            }).addTo(map);
+            var marker = L.marker([${latNum}, ${lngNum}]).addTo(map);
+            // marker.bindPopup("<b>" ${latNum} + ", " + ${lngNum}).openPopup();
+          } catch(e) {
+            document.body.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-family:sans-serif;">Peta gagal dimuat</div>';
+          }
+        </script>
+      </body>
+      </html>
+    `;
+  }, [hasValidCoord, latNum, lngNum]);
 
   // Foto
   const setPhotoFromAsset = async (asset: Asset) => {
@@ -615,8 +725,12 @@ export default function EditVisitScreen({ navigation, route }: any) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <Text style={styles.title}>{isManager ? 'Detail Visit' : 'Visit'}</Text>
-            <Text style={styles.subtitle}>{isManager ? 'Informasi kunjungan sales' : 'Edit Kunjungan'}</Text>
+            <Text style={styles.title}>
+              {isManager ? 'Detail Visit' : 'Visit'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {isManager ? 'Informasi kunjungan sales' : 'Edit Kunjungan'}
+            </Text>
           </View>
 
           {/* Sales (cabang) */}
@@ -641,7 +755,13 @@ export default function EditVisitScreen({ navigation, route }: any) {
               >
                 {tanggal ? formatDisplayDate(tanggal) : 'Pilih Tanggal'}
               </Text>
-              {!isManager && <MaterialIcons name="edit-calendar" size={22} color={THEME.ink} />}
+              {!isManager && (
+                <MaterialIcons
+                  name="edit-calendar"
+                  size={22}
+                  color={THEME.ink}
+                />
+              )}
             </TouchableOpacity>
 
             {showDate && (
@@ -716,15 +836,72 @@ export default function EditVisitScreen({ navigation, route }: any) {
               </TouchableOpacity>
             )}
 
+            {/* Preview Peta Interaktif & Tombol Google Maps */}
+            {hasValidCoord ? (
+              <View style={styles.mapWrapper}>
+                <WebView
+                  originWhitelist={['*']}
+                  source={{ html: mapHtml }}
+                  style={styles.mapWebView}
+                  nestedScrollEnabled
+                  javaScriptEnabled
+                  domStorageEnabled
+                  scalesPageToFit={Platform.OS === 'android'}
+                  androidLayerType="hardware"
+                />
+                <View style={styles.mapActionsRow}>
+                  <Text style={styles.mapCoordText} numberOfLines={1}>
+                    📍 {latNum.toFixed(5)}, {lngNum.toFixed(5)}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.btnGmaps}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      runGuardedPress(
+                        'edit-visit:open-gmaps',
+                        bukaGoogleMaps,
+                        800,
+                      )
+                    }
+                  >
+                    <MaterialIcons name="navigation" size={14} color="#FFF" />
+                    <Text style={styles.btnGmapsText}>Buka Google Maps</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.mapEmptyBox}>
+                <MaterialIcons
+                  name="location-off"
+                  size={18}
+                  color={THEME.muted}
+                />
+                <Text style={styles.mapEmptyText}>
+                  Koordinat belum tersedia. Tekan 'AMBIL LOKASI' untuk memuat
+                  peta.
+                </Text>
+              </View>
+            )}
+
             {/* Foto */}
             <Text style={styles.label}>Foto</Text>
             {photoPreviewUri ? (
               <>
-                <Image
-                  source={{ uri: photoPreviewUri }}
-                  style={styles.photo}
-                  resizeMode="cover"
-                />
+                <TouchableOpacity
+                  style={styles.imageCardBtn}
+                  activeOpacity={0.85}
+                  onPress={() => setPreviewModalUrl(photoPreviewUri)}
+                >
+                  <Image
+                    source={{ uri: photoPreviewUri }}
+                    style={styles.photo}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.imageZoomBadge}>
+                    <MaterialIcons name="zoom-in" size={14} color="#FFF" />
+                    <Text style={styles.imageZoomText}>Lihat Foto</Text>
+                  </View>
+                </TouchableOpacity>
                 {photo?.sizeBytes ? (
                   <Text style={styles.photoMeta}>
                     Size: {(photo.sizeBytes / 1024).toFixed(0)} KB
@@ -762,7 +939,11 @@ export default function EditVisitScreen({ navigation, route }: any) {
               <View style={styles.row}>
                 <TouchableOpacity
                   onPress={() =>
-                    runGuardedPress('edit-visit:pick-camera', pickFromCamera, 800)
+                    runGuardedPress(
+                      'edit-visit:pick-camera',
+                      pickFromCamera,
+                      800,
+                    )
                   }
                   style={[styles.btnSoft, { flex: 1 }]}
                   activeOpacity={0.9}
@@ -844,7 +1025,9 @@ export default function EditVisitScreen({ navigation, route }: any) {
 
                 <TouchableOpacity
                   onPress={() =>
-                    runGuardedPress('edit-visit:cancel', () => navigation.goBack())
+                    runGuardedPress('edit-visit:cancel', () =>
+                      navigation.goBack(),
+                    )
                   }
                   disabled={loading}
                   style={styles.btnGhost}
@@ -857,6 +1040,31 @@ export default function EditVisitScreen({ navigation, route }: any) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Modal View Image Fullscreen */}
+      <Modal
+        visible={Boolean(previewModalUrl)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewModalUrl(null)}
+      >
+        <View style={styles.fullImageModalOverlay}>
+          <TouchableOpacity
+            style={styles.closeFullImageBtn}
+            onPress={() => setPreviewModalUrl(null)}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+          {previewModalUrl && (
+            <Image
+              source={{ uri: previewModalUrl }}
+              style={styles.fullModalImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -999,18 +1207,130 @@ const styles = StyleSheet.create({
   btnGhost: { marginTop: 10, alignItems: 'center', paddingVertical: 10 },
   btnGhostText: { color: THEME.muted, fontWeight: '700' },
 
+  imageCardBtn: {
+    position: 'relative',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: 6,
+  },
   photo: {
     width: '100%',
     height: 180,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: THEME.line,
-    marginTop: 6,
+  },
+  imageZoomBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  imageZoomText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   photoMeta: {
     color: THEME.muted,
     fontSize: 12,
     marginTop: 8,
+    fontWeight: '600',
+  },
+
+  // Full Image Modal
+  fullImageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.94)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeFullImageBtn: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  fullModalImage: {
+    width: '95%',
+    height: '80%',
+  },
+
+  // Map Preview
+  mapWrapper: {
+    marginTop: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: THEME.line,
+    backgroundColor: THEME.soft,
+    marginBottom: 6,
+  },
+  mapWebView: {
+    width: '100%',
+    height: 190,
+    backgroundColor: '#E2E8F0',
+  },
+  mapActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: THEME.line,
+    gap: 8,
+  },
+  mapCoordText: {
+    fontSize: 11.5,
+    color: THEME.muted,
+    fontWeight: '700',
+    flex: 1,
+  },
+  btnGmaps: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#059669',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  btnGmapsText: {
+    color: '#FFF',
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
+  mapEmptyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: THEME.soft,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  mapEmptyText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: THEME.muted,
     fontWeight: '600',
   },
 

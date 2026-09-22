@@ -429,9 +429,9 @@ const HasilKalkulasiSection = ({
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              backgroundColor: gap > 0 ? '#f0fdf4' : '#faf5ff',
+              backgroundColor: '#f8fafc',
               borderWidth: 1,
-              borderColor: gap > 0 ? '#86efac' : '#d8b4fe',
+              borderColor: '#e2e8f0',
               borderRadius: 6,
               paddingHorizontal: 8,
               paddingVertical: 5,
@@ -441,14 +441,11 @@ const HasilKalkulasiSection = ({
               style={{
                 fontSize: 11.5,
                 fontWeight: '800',
-                color: gap > 0 ? '#15803d' : '#6b21a8',
+                color: '#334155',
               }}
             >
-              {gap > 0
-                ? `+Rp ${formatNumber(gap)} (+${persenGap.toFixed(1)}%)`
-                : `-Rp ${formatNumber(Math.abs(gap))} (-${Math.abs(
-                    persenGap,
-                  ).toFixed(1)}%)`}
+              Selisih: Rp {formatNumber(Math.abs(gap))} (
+              {Math.abs(persenGap).toFixed(1)}%)
             </Text>
 
             {qty > 1 && (
@@ -459,10 +456,7 @@ const HasilKalkulasiSection = ({
                   fontWeight: '600',
                 }}
               >
-                Total:{' '}
-                {gap > 0
-                  ? `+Rp ${formatNumber(totalGap)}`
-                  : `-Rp ${formatNumber(Math.abs(totalGap))}`}
+                Total: Rp {formatNumber(Math.abs(totalGap))}
               </Text>
             )}
           </View>
@@ -762,10 +756,7 @@ export default function PermintaanHargaDetailScreen({
   const showImage1 = Boolean(imageUrl1WithBuster) && !image1Error;
   const showImage2 = Boolean(imageUrl2WithBuster) && !image2Error;
 
-  const createdBy = useMemo(
-    () => data?.user_create || data?.mh_user_create || data?.created_by || '-',
-    [data],
-  );
+  const createdBy = useMemo(() => data?.user_kalkulasi || '-', [data]);
   const statusMeta = useMemo(
     () => statusBadgeStyle(String(data?.mh_status || '')),
     [data?.mh_status],
@@ -974,8 +965,8 @@ export default function PermintaanHargaDetailScreen({
 
             <View style={[styles.gridRow, { marginTop: 8 }]}>
               <CompactCell
-                label="Jumlah Order"
-                value={`${formatNumber(data?.mh_jmlorder || 0)} Pcs`}
+                label="Rencana Order (Pcs)"
+                value={`${formatNumber(data?.mh_jmlorder || 0)}`}
                 highlight
               />
               <CompactCell label="Finishing" value={data?.mh_finishing} />
