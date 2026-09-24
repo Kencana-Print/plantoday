@@ -57,6 +57,7 @@ import {
   TrackingSpkListItem,
 } from '../../services/trackingSpkApi';
 import { getPotensiList, PotensiListItem } from '../../services/potensiApi';
+import { getPenawaranList } from '../../services/penawaranApi';
 
 type Role = 'SALES' | 'MANAGER' | 'KURIR';
 type MenuItem = {
@@ -452,6 +453,7 @@ export default function HomeScreen({ navigation }: any) {
     useState(false);
   const [isPotensiListExpanded, setIsPotensiListExpanded] = useState(false);
   const [isStatusModalVisible, setStatusModalVisible] = useState(false);
+  const [unapprovedPenawaranCount, setUnapprovedPenawaranCount] = useState(0);
 
   const [visitPlans, setVisitPlans] = useState<RekapItem[]>([]);
   const [selectedVisitPlanDate, setSelectedVisitPlanDate] = useState<Date>(
@@ -607,7 +609,10 @@ export default function HomeScreen({ navigation }: any) {
     penawaranStatusCounts.OPEN + penawaranStatusCounts.PARSIAL;
   const totalActiveSpk = spkStatusCounts.BELUM + spkStatusCounts.PROSES;
   const grandTotalNotifications =
-    totalActivePH + totalActivePenawaran + totalActiveSpk;
+    totalActivePH +
+    totalActivePenawaran +
+    totalActiveSpk +
+    (isManager ? unapprovedPenawaranCount : 0);
 
   const fetchDashboardData = useCallback(async () => {
     if (!token) return;
@@ -688,6 +693,22 @@ export default function HomeScreen({ navigation }: any) {
       // Simpan raw data potensi bulan ini
       const pItems: PotensiListItem[] = (potensiRes as any)?.data || [];
       setRawPotensiItems(pItems);
+
+      // Ambil penawaran belum diapprove untuk manager
+      if (isManager) {
+        getPenawaranList({ approval_status: 'UNAPPROVED', limit: 100 }, token)
+          .then(list => {
+            setUnapprovedPenawaranCount(list?.length || 0);
+          })
+          .catch(err => {
+            console.log(
+              '[HomeScreen] getPenawaranList unapproved failed:',
+              err?.message,
+            );
+          });
+      } else {
+        setUnapprovedPenawaranCount(0);
+      }
 
       const rows: UserAggRow[] = achievementRes.data?.data || [];
 
@@ -3392,12 +3413,15 @@ export default function HomeScreen({ navigation }: any) {
                         menuItemObj.title === 'Tracking Penawaran';
                       const isTrackingSpk =
                         menuItemObj.title === 'Tracking SPK';
+                      const isPenawaran = menuItemObj.title === 'Penawaran';
                       const badgeCount = isPH
                         ? totalActivePH
                         : isTrackingPenawaran
                         ? totalActivePenawaran
                         : isTrackingSpk
                         ? totalActiveSpk
+                        : isPenawaran && isManager
+                        ? unapprovedPenawaranCount
                         : 0;
                       const hasBadge = badgeCount > 0;
 
@@ -3792,6 +3816,74 @@ export default function HomeScreen({ navigation }: any) {
                   </View>
                 </View>
               </View>
+
+              {/* Penawaran Approval (Khusus Manager) */}
+              {isManager && (
+                <>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginTop: 16,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <Text
+                      style={[styles.modalSectionTitle, { marginBottom: 0 }]}
+                    >
+                      Penawaran (Approval)
+                    </Text>
+                    {unapprovedPenawaranCount > 0 && (
+                      <View style={styles.modalSectionBadge}>
+                        <Text style={styles.modalSectionBadgeText}>
+                          {unapprovedPenawaranCount}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.statusListContainer}>
+                    <TouchableOpacity
+                      style={styles.statusItem}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setStatusModalVisible(false);
+                        handleNavigate('PenawaranList');
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <MaterialIcons
+                          name="schedule"
+                          size={16}
+                          color="#F59E0B"
+                        />
+                        <Text style={styles.statusLabel}>Belum Diapprove</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor:
+                              unapprovedPenawaranCount > 0
+                                ? '#EF4444'
+                                : '#10B981',
+                          },
+                        ]}
+                      >
+                        <Text style={styles.statusBadgeText}>
+                          {unapprovedPenawaranCount}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
 
               {/* Tracking SPK */}
               <View

@@ -5,6 +5,8 @@ export type PenawaranListParams = {
   endDate?: string;
   status?: 'ALL' | 'OPEN' | 'BATAL' | 'CLOSE';
   search?: string;
+  sales_kode?: string;
+  approval_status?: 'ALL' | 'APPROVED' | 'UNAPPROVED' | string;
   limit?: number;
 };
 
@@ -24,6 +26,9 @@ export type PenawaranListItem = {
   nominal: number;
   detail_count: number;
   approval_state: '' | 'WAIT' | 'ACC' | 'TOLAK' | string;
+  digital_sign?: string;
+  digital_sign_date?: string;
+  is_approved?: number | boolean;
 };
 
 export type PenawaranHeader = {
@@ -114,6 +119,9 @@ export type PenawaranPermintaanHargaOption = {
   qty?: number;
   harga_referensi?: number;
   is_non_belum?: number;
+  nomor_kalkulasi?: string;
+  ket_kalkulasi?: string;
+  is_include_ppn?: number | boolean;
 };
 
 export type PenawaranPermintaanHargaSelected = {
@@ -135,6 +143,9 @@ export type PenawaranPermintaanHargaSelected = {
     qty?: number;
     harga_referensi?: number;
     keterangan?: string;
+    nomor_kalkulasi?: string;
+    ket_kalkulasi?: string;
+    is_include_ppn?: boolean;
   };
   warning?: string;
 };
@@ -151,6 +162,7 @@ export type PenawaranCreatePayload = {
   sales_kode: string;
   keterangan?: string;
   note?: string;
+  status_harga?: number;
   user?: string;
   details: Array<{
     minta?: string;
@@ -276,6 +288,7 @@ export const getMasterPermintaanHargaForPenawaran = async (
     nomor?: string;
     sales_kode?: string;
     customer_kode?: string;
+    status?: string;
     page?: number;
     limit?: number;
   } = {},
@@ -351,4 +364,22 @@ export const getPenawaranActivityLogs = async (
     },
   );
   return (response.data?.data || []) as PenawaranActivityLog[];
+};
+
+export const approvePenawaran = async (
+  nomor: string,
+  token?: string | null,
+) => {
+  const response = await api.post(
+    `/penawaran/${encodeURIComponent(nomor)}/approve`,
+    {},
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
+  return response.data as {
+    success: boolean;
+    message: string;
+    data?: any;
+  };
 };

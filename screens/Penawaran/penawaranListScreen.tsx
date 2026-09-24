@@ -5,6 +5,7 @@ import {
   Platform,
   FlatList,
   RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -20,8 +21,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/authContext';
 import { ListSkeleton } from '../../components/loadingSkeleton';
 import {
+  getMasterSales,
   getPenawaranList,
   PenawaranListItem,
+  PenawaranMasterOption,
 } from '../../services/penawaranApi';
 import { PENAWARAN_SHADOW, PENAWARAN_THEME } from './penawaranTheme';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -72,19 +75,84 @@ const getCurrentMonth = () => {
 
 export default function PenawaranListScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const { token } = useAuth();
+  const { user, token } = useAuth();
+  const isManager = useMemo(
+    () =>
+      String(user?.jabatan || '')
+        .trim()
+        .toUpperCase()
+        .split(/[\s/_-]+/)
+        .includes('MANAGER'),
+    [user?.jabatan],
+  );
+
   const initialRange = useMemo(() => getCurrentMonth(), []);
   const [items, setItems] = useState<PenawaranListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [status] = useState<FilterStatus>('ALL');
+  const [approvalFilter, setApprovalFilter] = useState<
+    'ALL' | 'APPROVED' | 'UNAPPROVED'
+  >('ALL');
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showSearchFab, setShowSearchFab] = useState(false);
   const [openSearchMini, setOpenSearchMini] = useState(false);
+
+  const approvalCounts = useMemo(() => {
+    let approved = 0;
+    let unapproved = 0;
+    items.forEach(item => {
+      const isApp =
+        String(item.digital_sign || '').trim().toUpperCase() === 'Y' ||
+        Boolean(item.is_approved);
+      if (isApp) approved++;
+      else unapproved++;
+    });
+    return {
+      all: items.length,
+      approved,
+      unapproved,
+    };
+  }, [items]);
+
+  const displayedItems = useMemo(() => {
+    if (approvalFilter === 'ALL') return items;
+    return items.filter(item => {
+      const isApp =
+        String(item.digital_sign || '').trim().toUpperCase() === 'Y' ||
+        Boolean(item.is_approved);
+      if (approvalFilter === 'APPROVED') return isApp;
+      if (approvalFilter === 'UNAPPROVED') return !isApp;
+      return true;
+    });
+  }, [items, approvalFilter]);
+
+  const [selectedSalesKode, setSelectedSalesKode] = useState<string>('');
+  const [selectedSalesName, setSelectedSalesName] =
+    useState<string>('Semua Sales');
+  const [salesList, setSalesList] = useState<PenawaranMasterOption[]>([]);
+  const [salesPickerVisible, setSalesPickerVisible] = useState(false);
+  const [salesPickerSearch, setSalesPickerSearch] = useState('');
+
+  const loadSalesList = useCallback(async () => {
+    if (!isManager) return;
+    try {
+      const rows = await getMasterSales();
+      setSalesList(rows);
+    } catch (err) {
+      console.error('[PenawaranList] getMasterSales error:', err);
+    }
+  }, [isManager]);
+
+  useEffect(() => {
+    if (isManager) {
+      loadSalesList();
+    }
+  }, [isManager, loadSalesList]);
 
   const startDateLabel = useMemo(() => formatDate(startDate), [startDate]);
   const endDateLabel = useMemo(() => formatDate(endDate), [endDate]);
@@ -117,6 +185,8 @@ export default function PenawaranListScreen({ navigation }: any) {
             endDate,
             status,
             search: search.trim() || undefined,
+            sales_kode:
+              isManager && selectedSalesKode ? selectedSalesKode : undefined,
           },
           token,
         );
@@ -134,7 +204,7 @@ export default function PenawaranListScreen({ navigation }: any) {
         setRefreshing(false);
       }
     },
-    [endDate, search, startDate, status, token],
+    [endDate, isManager, search, selectedSalesKode, startDate, status, token],
   );
 
   useFocusEffect(
@@ -178,7 +248,7 @@ export default function PenawaranListScreen({ navigation }: any) {
       loadData();
     }, 350);
     return () => clearTimeout(timer);
-  }, [search, status, startDate, endDate, loadData]);
+  }, [search, status, startDate, endDate, selectedSalesKode, loadData]);
 
   const parseYmd = (ymd: string) => {
     const [y, m, d] = String(ymd || '')
@@ -227,6 +297,10 @@ export default function PenawaranListScreen({ navigation }: any) {
   }, []);
 
   const renderItem = ({ item }: { item: PenawaranListItem }) => {
+    const isApproved =
+      String(item.digital_sign || '').trim().toUpperCase() === 'Y' ||
+      Boolean(item.is_approved);
+
     return (
       <TouchableOpacity
         activeOpacity={0.9}
@@ -235,7 +309,33 @@ export default function PenawaranListScreen({ navigation }: any) {
       >
         <View style={styles.cardTopRow}>
           <Text style={styles.nomor}>{item.nomor}</Text>
-          <Text style={styles.detailCount}>{item.detail_count} item</Text>
+          <View style={styles.topBadgesRow}>
+            <View
+              style={[
+                styles.approvalBadge,
+                isApproved
+                  ? styles.approvalBadgeApproved
+                  : styles.approvalBadgeUnapproved,
+              ]}
+            >
+              <MaterialIcons
+                name={isApproved ? 'verified' : 'schedule'}
+                size={12}
+                color={isApproved ? '#059669' : '#D97706'}
+              />
+              <Text
+                style={[
+                  styles.approvalBadgeText,
+                  isApproved
+                    ? styles.approvalBadgeTextApproved
+                    : styles.approvalBadgeTextUnapproved,
+                ]}
+              >
+                {isApproved ? 'Sudah Diapprove' : 'Belum Diapprove'}
+              </Text>
+            </View>
+            <Text style={styles.detailCount}>{item.detail_count} item</Text>
+          </View>
         </View>
         <Text style={styles.customer} numberOfLines={1}>
           {item.customer || '-'}
@@ -287,23 +387,132 @@ export default function PenawaranListScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.searchBox}>
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Cari nomor/customer/perusahaan"
-            placeholderTextColor={THEME.muted}
-            style={styles.searchInput}
-          />
-          {search.trim() ? (
+        <View style={styles.searchRow}>
+          <View
+            style={[
+              styles.searchBox,
+              isManager && styles.searchBoxWithFilter,
+            ]}
+          >
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder={
+                isManager
+                  ? 'Cari nomor/customer...'
+                  : 'Cari nomor/customer/perusahaan'
+              }
+              placeholderTextColor={THEME.muted}
+              style={styles.searchInput}
+            />
+            {search.trim() ? (
+              <TouchableOpacity
+                style={styles.clearSearchButton}
+                onPress={() => setSearch('')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.clearSearchButtonText}>x</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {isManager && (
             <TouchableOpacity
-              style={styles.clearSearchButton}
-              onPress={() => setSearch('')}
-              activeOpacity={0.8}
+              style={[
+                styles.salesFilterBtn,
+                Boolean(selectedSalesKode) && styles.salesFilterBtnActive,
+              ]}
+              onPress={() => {
+                setSalesPickerSearch('');
+                setSalesPickerVisible(true);
+              }}
+              activeOpacity={0.85}
             >
-              <Text style={styles.clearSearchButtonText}>x</Text>
+              <MaterialIcons
+                name="person-outline"
+                size={16}
+                color={selectedSalesKode ? THEME.primary : THEME.muted}
+              />
+              <Text
+                style={[
+                  styles.salesFilterBtnText,
+                  Boolean(selectedSalesKode) && styles.salesFilterBtnTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                {selectedSalesName}
+              </Text>
+              <MaterialIcons
+                name="arrow-drop-down"
+                size={18}
+                color={selectedSalesKode ? THEME.primary : THEME.muted}
+              />
             </TouchableOpacity>
-          ) : null}
+          )}
+        </View>
+
+        {/* FILTER STATUS APPROVAL (DI BAWAH FORM SEARCH) */}
+        <View style={styles.chipRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipScroll}
+          >
+            {(
+              [
+                {
+                  key: 'ALL' as const,
+                  label: `Semua (${approvalCounts.all})`,
+                  dotColor: undefined,
+                },
+                {
+                  key: 'APPROVED' as const,
+                  label: `Sudah Diapprove (${approvalCounts.approved})`,
+                  dotColor: '#10B981',
+                },
+                {
+                  key: 'UNAPPROVED' as const,
+                  label: `Belum Diapprove (${approvalCounts.unapproved})`,
+                  dotColor: '#F59E0B',
+                },
+              ] as const
+            ).map(tab => {
+              const active = approvalFilter === tab.key;
+              return (
+                <TouchableOpacity
+                  key={`approval-${tab.key}`}
+                  style={[styles.chipItem, active && styles.chipItemActive]}
+                  activeOpacity={0.8}
+                  onPress={() => setApprovalFilter(tab.key)}
+                >
+                  <View style={styles.chipContent}>
+                    {tab.key === 'ALL' ? (
+                      <MaterialIcons
+                        name="format-list-bulleted"
+                        size={14}
+                        color={active ? THEME.primary : THEME.muted}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.chipDot,
+                          { backgroundColor: tab.dotColor },
+                        ]}
+                      />
+                    )}
+                    <Text
+                      style={[
+                        styles.chipLabel,
+                        active && styles.chipLabelActive,
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         <TouchableOpacity
@@ -324,7 +533,7 @@ export default function PenawaranListScreen({ navigation }: any) {
       </View>
 
       <View style={styles.divider} />
-      <Text style={styles.tampil}>Menampilkan {items.length} data</Text>
+      <Text style={styles.tampil}>Menampilkan {displayedItems.length} data</Text>
     </View>
   );
 
@@ -342,7 +551,7 @@ export default function PenawaranListScreen({ navigation }: any) {
       />
 
       <FlatList
-        data={items}
+        data={displayedItems}
         keyExtractor={item => item.nomor}
         renderItem={renderItem}
         ListHeaderComponent={ListHeader}
@@ -451,6 +660,109 @@ export default function PenawaranListScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {isManager && (
+        <Modal
+          visible={salesPickerVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSalesPickerVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.salesPickerModalCard}>
+              <View style={styles.salesPickerHeader}>
+                <Text style={styles.salesPickerTitle}>
+                  Filter Berdasarkan Sales
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setSalesPickerVisible(false)}
+                  activeOpacity={0.8}
+                  style={styles.salesPickerCloseBtn}
+                >
+                  <MaterialIcons name="close" size={20} color={THEME.ink} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.salesSearchBox}>
+                <MaterialIcons name="search" size={18} color={THEME.muted} />
+                <TextInput
+                  value={salesPickerSearch}
+                  onChangeText={setSalesPickerSearch}
+                  placeholder="Cari nama sales..."
+                  placeholderTextColor={THEME.muted}
+                  style={styles.salesSearchInput}
+                />
+                {salesPickerSearch.trim() ? (
+                  <TouchableOpacity
+                    onPress={() => setSalesPickerSearch('')}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="clear" size={16} color={THEME.muted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <FlatList
+                data={[
+                  { kode: '', nama: 'Semua Sales' },
+                  ...salesList.filter(
+                    s =>
+                      (s.nama || '')
+                        .toLowerCase()
+                        .includes(salesPickerSearch.trim().toLowerCase()) ||
+                      (s.kode || '')
+                        .toLowerCase()
+                        .includes(salesPickerSearch.trim().toLowerCase()),
+                  ),
+                ]}
+                keyExtractor={(item, index) => item.kode || `all-${index}`}
+                renderItem={({ item }) => {
+                  const isSelected = selectedSalesKode === item.kode;
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.salesOptionItem,
+                        isSelected && styles.salesOptionItemActive,
+                      ]}
+                      onPress={() => {
+                        setSelectedSalesKode(item.kode);
+                        setSelectedSalesName(item.nama);
+                        setSalesPickerVisible(false);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.salesOptionTextWrap}>
+                        <Text
+                          style={[
+                            styles.salesOptionText,
+                            isSelected && styles.salesOptionTextActive,
+                          ]}
+                        >
+                          {item.nama}
+                        </Text>
+                        {!!item.kode && (
+                          <Text style={styles.salesOptionKode}>
+                            Kode: {item.kode}
+                          </Text>
+                        )}
+                      </View>
+                      {isSelected && (
+                        <MaterialIcons
+                          name="check"
+                          size={18}
+                          color={THEME.primary}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+                style={styles.salesFlatList}
+                keyboardShouldPersistTaps="handled"
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
     </LinearGradient>
   );
 }
@@ -520,8 +832,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: 2,
   },
-  searchBox: {
+  searchRow: {
     marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchBox: {
+    flex: 1,
     backgroundColor: THEME.soft,
     borderRadius: 15,
     borderWidth: 1,
@@ -531,6 +849,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  searchBoxWithFilter: {
+    flex: 1.15,
+  },
+  salesFilterBtn: {
+    flex: 0.95,
+    height: 46,
+    backgroundColor: THEME.soft,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  salesFilterBtnActive: {
+    backgroundColor: 'rgba(79,70,229,0.08)',
+    borderColor: 'rgba(79,70,229,0.35)',
+  },
+  salesFilterBtnText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  salesFilterBtnTextActive: {
+    color: THEME.primary,
+    fontWeight: '800',
   },
   searchInput: {
     flex: 1,
@@ -602,23 +949,87 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
   },
   nomor: {
     fontSize: 15,
     fontWeight: '800',
     color: THEME.ink,
   },
+  topBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   approvalBadge: {
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  approvalBadgeApproved: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  approvalBadgeUnapproved: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
   },
   approvalBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 10.5,
+    fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  approvalBadgeTextApproved: {
+    color: '#059669',
+  },
+  approvalBadgeTextUnapproved: {
+    color: '#C2410C',
+  },
+  chipRow: {
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  chipScroll: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  chipItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    backgroundColor: THEME.soft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipItemActive: {
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    borderColor: THEME.primary,
+  },
+  chipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  chipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  chipLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.muted,
+  },
+  chipLabelActive: {
+    color: THEME.primary,
+    fontWeight: '800',
   },
   customer: {
     marginTop: 6,
@@ -753,5 +1164,84 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 11,
     paddingTop: 5,
+  },
+  salesPickerModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    padding: 16,
+    width: '90%',
+    maxHeight: '75%',
+    ...PENAWARAN_SHADOW.card,
+  },
+  salesPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.line,
+  },
+  salesPickerTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: THEME.ink,
+  },
+  salesPickerCloseBtn: {
+    padding: 4,
+  },
+  salesSearchBox: {
+    marginTop: 12,
+    marginBottom: 8,
+    backgroundColor: THEME.soft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    paddingHorizontal: 10,
+    height: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  salesSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: THEME.ink,
+    padding: 0,
+  },
+  salesFlatList: {
+    marginTop: 4,
+    maxHeight: 320,
+  },
+  salesOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  salesOptionItemActive: {
+    backgroundColor: 'rgba(79,70,229,0.08)',
+  },
+  salesOptionTextWrap: {
+    flex: 1,
+  },
+  salesOptionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  salesOptionTextActive: {
+    color: THEME.primary,
+    fontWeight: '800',
+  },
+  salesOptionKode: {
+    fontSize: 11,
+    color: THEME.muted,
+    fontWeight: '500',
+    marginTop: 2,
   },
 });

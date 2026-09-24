@@ -987,6 +987,20 @@ export default function PermintaanHargaDetailScreen({
               </View>
             ) : null}
 
+            {String(data?.mh_divisi) === '4' && data?.mh_workshop ? (
+              <View style={[styles.gridRow, { marginTop: 8 }]}>
+                <CompactCell
+                  label="Workshop"
+                  value={
+                    String(data.mh_workshop).toUpperCase() === 'P04'
+                      ? 'PREMIUM (P04)'
+                      : 'MEDIUM (P01)'
+                  }
+                  fullWidth
+                />
+              </View>
+            ) : null}
+
             {Number(data?.mh_ongkir) > 0 ? (
               <View style={[styles.gridRow, { marginTop: 8 }]}>
                 <CompactCell

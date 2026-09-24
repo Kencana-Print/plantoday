@@ -47,6 +47,11 @@ import ImageResizer from 'react-native-image-resizer';
 import { Image } from 'react-native';
 import { usePressGuard } from '../../utils/usePressGuard';
 import { PENAWARAN_SHADOW, PENAWARAN_THEME } from '../Penawaran/penawaranTheme';
+import {
+  hitungOngkirOtomatis,
+  OngkirMasterItem,
+  FALLBACK_ONGKIR_OPTIONS,
+} from '../../utils/ongkirEngine';
 
 const THEME = PENAWARAN_THEME;
 
@@ -124,6 +129,20 @@ const getGramasiByKain = (kainName: string): string => {
   if (k.includes('HYGIT') || k.includes('HYGET')) return '110-120 GR';
   if (k.includes('PE 20') || k.includes('PE 24')) return '170-180 GR';
   if (k.includes('PE 30')) return '130-140 GR';
+  return '';
+};
+
+const getSablonUkuranDesc = (ketStr: string): string => {
+  const upper = String(ketStr || '').toUpperCase();
+  if (/\bA3\b/.test(upper)) {
+    return '29.7 × 42 cm';
+  }
+  if (/\bA4\b/.test(upper)) {
+    return '21 × 29.7 cm';
+  }
+  if (/\bA5\b/.test(upper)) {
+    return '14.8 × 21 cm';
+  }
   return '';
 };
 
@@ -274,6 +293,25 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [mh_ongkir, setMhOngkir] = useState(
     initial?.mh_ongkir ? String(initial.mh_ongkir) : '',
   );
+  const [alokasiOngkir, setAlokasiOngkir] = useState<string>(
+    String(initial?.mh_ongkir_alokasi || 'Jakarta'),
+  );
+  const [isCustomOngkir, setIsCustomOngkir] = useState<boolean>(
+    Boolean(
+      initial?.mh_ongkir_is_custom ||
+        (initial?.mh_ongkir &&
+          !FALLBACK_ONGKIR_OPTIONS.some(
+            o =>
+              o.alokasi.toLowerCase() ===
+              String(initial?.mh_ongkir_alokasi || '').toLowerCase(),
+          )),
+    ),
+  );
+  const [customOngkirVal, setCustomOngkirVal] = useState<string>(
+    initial?.mh_ongkir ? String(initial.mh_ongkir) : '',
+  );
+  const [modalOngkirVisible, setModalOngkirVisible] = useState<boolean>(false);
+  const [searchOngkirQuery, setSearchOngkirQuery] = useState<string>('');
   const [showOngkirPopover, setShowOngkirPopover] = useState<boolean>(false);
   const [showConfirmSubmitModal, setShowConfirmSubmitModal] =
     useState<boolean>(false);
@@ -412,16 +450,19 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       setMhHargaKalkulasi(currentHrg => {
         let rawDpp = 0;
         if (mh_divisi === '5' && mmtResult?.hargaSatuanPcs) {
-          rawDpp = mmtResult.hargaSatuanPcs;
-        } else if (mh_divisi === '1' && spandukResult?.hargaSatuanPcs) {
-          rawDpp = spandukResult.hargaSatuanPcs;
-        } else if (mh_divisi === '4' && garmenCalcResult) {
           rawDpp =
+            mmtResult.hargaSatuanPcs + (calculatedOngkir.ongkirPerPcs || 0);
+        } else if (mh_divisi === '1' && spandukResult?.hargaSatuanPcs) {
+          rawDpp =
+            spandukResult.hargaSatuanPcs + (calculatedOngkir.ongkirPerPcs || 0);
+        } else if (mh_divisi === '4' && garmenCalcResult) {
+          const rawGarmen =
             garmenCalcResult.hargaUpPerPcs ||
             garmenCalcResult.hargaJualRevisi ||
             garmenCalcResult.hargaJualPerPcs ||
             garmenCalcResult.hargaJual ||
             0;
+          rawDpp = rawGarmen + (calculatedOngkir.ongkirPerPcs || 0);
         } else if (currentHrg > 0) {
           rawDpp = prevPpn ? Math.round(currentHrg / 1.11) : currentHrg;
         }
@@ -444,8 +485,44 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     spanduk: any[];
     mmt: any[];
     topping: any[];
+    ongkir?: any[];
     sales?: any[];
-  }>({ spanduk: [], mmt: [], topping: [], sales: [] });
+  }>({ spanduk: [], mmt: [], topping: [], ongkir: [], sales: [] });
+
+  const activeOngkirMasterList = useMemo<OngkirMasterItem[]>(() => {
+    if (
+      masterOptions?.ongkir &&
+      Array.isArray(masterOptions.ongkir) &&
+      masterOptions.ongkir.length > 0
+    ) {
+      return masterOptions.ongkir as OngkirMasterItem[];
+    }
+    return FALLBACK_ONGKIR_OPTIONS;
+  }, [masterOptions?.ongkir]);
+
+  const calculatedOngkir = useMemo(() => {
+    return hitungOngkirOtomatis({
+      options: activeOngkirMasterList,
+      alokasi: alokasiOngkir,
+      divisi: mh_divisi,
+      panjang: toNumDecimal(mh_panjang),
+      lebar: toNumDecimal(mh_lebar),
+      qty: toNumCurrency(mh_jmlorder),
+      sublim: mh_sublim,
+      customNominal: toNumCurrency(customOngkirVal),
+      isCustom: isCustomOngkir || alokasiOngkir === 'Custom',
+    });
+  }, [
+    activeOngkirMasterList,
+    alokasiOngkir,
+    mh_divisi,
+    mh_panjang,
+    mh_lebar,
+    mh_jmlorder,
+    mh_sublim,
+    customOngkirVal,
+    isCustomOngkir,
+  ]);
 
   // Customer Modal States
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -620,6 +697,32 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
           String(initial.mh_ket_kalkulasi).toUpperCase().includes('NETTO')),
     ),
   );
+
+  const initialSelongsongVert = useMemo(() => {
+    const rawKet = String(initial?.mh_ket_kalkulasi || '').toUpperCase();
+    return (
+      rawKet.includes('SELONGSONG (V & H)') ||
+      rawKet.includes('SELONGSONG VERTIKAL') ||
+      rawKet.includes('SELONGSONG V')
+    );
+  }, [initial?.mh_ket_kalkulasi]);
+
+  const initialSelongsongHoriz = useMemo(() => {
+    const rawKet = String(initial?.mh_ket_kalkulasi || '').toUpperCase();
+    return (
+      rawKet.includes('SELONGSONG (V & H)') ||
+      rawKet.includes('SELONGSONG HORIZONTAL') ||
+      rawKet.includes('SELONGSONG H')
+    );
+  }, [initial?.mh_ket_kalkulasi]);
+
+  const [mmtSelongsongVert, setMmtSelongsongVert] = useState<boolean>(
+    initialSelongsongVert,
+  );
+  const [mmtSelongsongHoriz, setMmtSelongsongHoriz] = useState<boolean>(
+    initialSelongsongHoriz,
+  );
+
   const [mmtResult, setMmtResult] = useState<any>(null);
   const [mmtLoading, setMmtLoading] = useState<boolean>(false);
   const [showMmtStrataTabel, setShowMmtStrataTabel] = useState<boolean>(false);
@@ -635,6 +738,14 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     useState<string>('PE SINGLE 24');
   const [garmenKategoriKain, setGarmenKategoriKain] = useState<string>('pe');
   const [garmenWarna, setGarmenWarna] = useState<string>('muda');
+  const [garmenWorkshop, setGarmenWorkshop] = useState<'MEDIUM' | 'PREMIUM'>(
+    () => {
+      const raw = String(
+        initial?.mh_workshop || initial?.garmen_workshop || '',
+      ).toUpperCase();
+      return raw === 'P04' || raw === 'PREMIUM' ? 'PREMIUM' : 'MEDIUM';
+    },
+  );
   const [garmenKainList, setGarmenKainList] = useState<any[]>([]);
   const [garmenLoadingKain, setGarmenLoadingKain] = useState<boolean>(false);
   const [modalGarmenKainVisible, setModalGarmenKainVisible] =
@@ -744,7 +855,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       spandukCalculatedParams !== currentSpandukParamsKey,
   );
 
-  const currentMmtParamsKey = `${mh_panjang}|${mh_lebar}|${mh_jmlorder}|${mmtKategori}|${mmtBahanKode}|${mmtToppingKode}|${mmtToppingQty}|${mmtIsNetto}|${isIncPpn}`;
+  const currentMmtParamsKey = `${mh_panjang}|${mh_lebar}|${mh_jmlorder}|${mmtKategori}|${mmtBahanKode}|${mmtToppingKode}|${mmtToppingQty}|${mmtIsNetto}|${mmtSelongsongVert}|${mmtSelongsongHoriz}|${isIncPpn}`;
   const isMmtStale = Boolean(
     mmtResult &&
       mmtCalculatedParams &&
@@ -760,12 +871,13 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       .map(c => `${c.jenis}:${c.ket}:${c.biaya}`)
       .sort()
       .join(';');
-    return `${garmenKodeModel}|${garmenJenisKain}|${garmenWarna}|${mh_jmlorder}|${tambahanKey}|${cetakKey}|${isIncPpn}`;
+    return `${garmenKodeModel}|${garmenJenisKain}|${garmenWarna}|${mh_jmlorder}|${garmenWorkshop}|${tambahanKey}|${cetakKey}|${isIncPpn}`;
   }, [
     garmenKodeModel,
     garmenJenisKain,
     garmenWarna,
     mh_jmlorder,
+    garmenWorkshop,
     garmenSelectedTambahan,
     garmenSelectedCetak,
     isIncPpn,
@@ -1176,9 +1288,11 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
           res.hargaJualPerPcs ||
           res.hargaJual ||
           0;
+        const hargaJualDenganOngkir =
+          hargaJual + (calculatedOngkir.ongkirPerPcs || 0);
         const finalHargaGarmen = isIncPpn
-          ? Math.round(hargaJual * 1.11)
-          : Math.round(hargaJual);
+          ? Math.round(hargaJualDenganOngkir * 1.11)
+          : Math.round(hargaJualDenganOngkir);
         setMhHarga('0');
         setMhBudget('0');
         setMhHargaKalkulasi(finalHargaGarmen);
@@ -1188,7 +1302,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
         Toast.show({
           type: 'glassSuccess',
           text1: 'Kalkulasi Garmen Berhasil',
-          text2: `Harga Jual: Rp ${Number(hargaJual).toLocaleString(
+          text2: `Harga Jual: Rp ${Number(hargaJualDenganOngkir).toLocaleString(
             'id-ID',
           )}/pcs`,
         });
@@ -1249,12 +1363,14 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
         );
         setSpandukResult(res);
         setSpandukCalculatedParams(
-          `${mh_panjang}|${mh_jmlorder}|${activeMetode}|${activeLebar}|${activeKain}|${isIncPpn}`,
+          `${mh_panjang}|${mh_jmlorder}|${activeMetode}|${activeLebar}|${activeKain}|${isIncPpn}|${calculatedOngkir.ongkirPerPcs}`,
         );
         if (res?.hargaSatuanPcs) {
+          const hargaSpandukDenganOngkir =
+            res.hargaSatuanPcs + (calculatedOngkir.ongkirPerPcs || 0);
           const finalHargaSpanduk = isIncPpn
-            ? Math.round(res.hargaSatuanPcs * 1.11)
-            : res.hargaSatuanPcs;
+            ? Math.round(hargaSpandukDenganOngkir * 1.11)
+            : hargaSpandukDenganOngkir;
           setMhHarga('0');
           setMhBudget('0');
           setMhHargaKalkulasi(finalHargaSpanduk);
@@ -1283,12 +1399,17 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       spandukJenisKain,
       token,
       isIncPpn,
+      calculatedOngkir.ongkirPerPcs,
     ],
   );
 
   // Kalkulasi MMT
   const handleHitungMmt = useCallback(
-    async (customIsNetto?: any) => {
+    async (
+      customIsNetto?: any,
+      customSelongsongVert?: boolean,
+      customSelongsongHoriz?: boolean,
+    ) => {
       const numPanjang = toNumDecimal(mh_panjang);
       const numLebar = toNumDecimal(mh_lebar);
       const numQty = toNumCurrency(mh_jmlorder);
@@ -1296,6 +1417,14 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
 
       const activeNetto =
         typeof customIsNetto === 'boolean' ? customIsNetto : mmtIsNetto;
+      const activeSelongsongVert =
+        typeof customSelongsongVert === 'boolean'
+          ? customSelongsongVert
+          : mmtSelongsongVert;
+      const activeSelongsongHoriz =
+        typeof customSelongsongHoriz === 'boolean'
+          ? customSelongsongHoriz
+          : mmtSelongsongHoriz;
 
       setMmtLoading(true);
       try {
@@ -1309,17 +1438,21 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
             toppingKode: mmtToppingKode,
             toppingQty: toNumCurrency(mmtToppingQty) || 1,
             isNetto: activeNetto,
+            selongsongVertical: activeSelongsongVert,
+            selongsongHorizontal: activeSelongsongHoriz,
           },
           token,
         );
         setMmtResult(res);
         setMmtCalculatedParams(
-          `${mh_panjang}|${mh_lebar}|${mh_jmlorder}|${mmtKategori}|${mmtBahanKode}|${mmtToppingKode}|${mmtToppingQty}|${activeNetto}|${isIncPpn}`,
+          `${mh_panjang}|${mh_lebar}|${mh_jmlorder}|${mmtKategori}|${mmtBahanKode}|${mmtToppingKode}|${mmtToppingQty}|${activeNetto}|${activeSelongsongVert}|${activeSelongsongHoriz}|${isIncPpn}|${calculatedOngkir.ongkirPerPcs}`,
         );
         if (res?.hargaSatuanPcs) {
+          const hargaMmtDenganOngkir =
+            res.hargaSatuanPcs + (calculatedOngkir.ongkirPerPcs || 0);
           const finalHargaMmt = isIncPpn
-            ? Math.round(res.hargaSatuanPcs * 1.11)
-            : res.hargaSatuanPcs;
+            ? Math.round(hargaMmtDenganOngkir * 1.11)
+            : hargaMmtDenganOngkir;
           setMhHarga('0');
           setMhBudget('0');
           setMhHargaKalkulasi(finalHargaMmt);
@@ -1328,9 +1461,17 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
               ? ` (Netto - Alasan: ${mmtAlasanNetto.trim()})`
               : ' (Netto)'
             : '';
+          let selongsongText = '';
+          if (activeSelongsongVert && activeSelongsongHoriz) {
+            selongsongText = ' + Plus Selongsong (V & H)';
+          } else if (activeSelongsongVert) {
+            selongsongText = ' + Plus Selongsong Vertikal';
+          } else if (activeSelongsongHoriz) {
+            selongsongText = ' + Plus Selongsong Horizontal';
+          }
           const mmtSpec = `MMT ${mmtKategori} ${mmtBahanKode}${nettoSpec}${
             res.topping ? ` + Top: ${res.topping.nama}` : ''
-          }`;
+          }${selongsongText}`;
           setKeteranganKalkulasi(
             isIncPpn ? `INC PPN; ${mmtSpec}` : `EXC PPN; ${mmtSpec}`,
           );
@@ -1354,9 +1495,12 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       mmtToppingKode,
       mmtToppingQty,
       mmtIsNetto,
+      mmtSelongsongVert,
+      mmtSelongsongHoriz,
       mmtAlasanNetto,
       token,
       isIncPpn,
+      calculatedOngkir.ongkirPerPcs,
     ],
   );
 
@@ -1371,6 +1515,42 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     }, 50);
   };
 
+  const syncSelongsongKet = (isVert: boolean, isHoriz: boolean) => {
+    const hasSelongsong = isVert || isHoriz;
+    setMhKet(prevKet => {
+      const current = (prevKet || '').trim();
+      if (hasSelongsong) {
+        if (!current.toLowerCase().includes('plus selongsong')) {
+          return current ? `${current}, Plus Selongsong` : 'Plus Selongsong';
+        }
+        return current;
+      } else {
+        return current
+          .replace(/,?\s*Plus Selongsong/gi, '')
+          .replace(/^,\s*/, '')
+          .trim();
+      }
+    });
+  };
+
+  const handleToggleSelongsongVert = () => {
+    const nextVert = !mmtSelongsongVert;
+    setMmtSelongsongVert(nextVert);
+    syncSelongsongKet(nextVert, mmtSelongsongHoriz);
+    setTimeout(() => {
+      handleHitungMmt(mmtIsNetto, nextVert, mmtSelongsongHoriz);
+    }, 50);
+  };
+
+  const handleToggleSelongsongHoriz = () => {
+    const nextHoriz = !mmtSelongsongHoriz;
+    setMmtSelongsongHoriz(nextHoriz);
+    syncSelongsongKet(mmtSelongsongVert, nextHoriz);
+    setTimeout(() => {
+      handleHitungMmt(mmtIsNetto, mmtSelongsongVert, nextHoriz);
+    }, 50);
+  };
+
   const handleUpdateMmtAlasan = (alasan: string) => {
     setMmtAlasanNetto(alasan);
     if (mh_divisi === '5') {
@@ -1382,7 +1562,15 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
           : ' (Netto)'
         : '';
       const topText = topName ? ` + Top: ${topName}` : '';
-      const mmtSpec = `MMT ${mmtKategori} ${mmtBahanKode}${nettoText}${topText}`;
+      let selText = '';
+      if (mmtSelongsongVert && mmtSelongsongHoriz) {
+        selText = ' + Plus Selongsong (V & H)';
+      } else if (mmtSelongsongVert) {
+        selText = ' + Plus Selongsong Vertikal';
+      } else if (mmtSelongsongHoriz) {
+        selText = ' + Plus Selongsong Horizontal';
+      }
+      const mmtSpec = `MMT ${mmtKategori} ${mmtBahanKode}${nettoText}${topText}${selText}`;
       setKeteranganKalkulasi(
         isIncPpn ? `INC PPN; ${mmtSpec}` : `EXC PPN; ${mmtSpec}`,
       );
@@ -1572,13 +1760,17 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
 
     let finalHargaKalkulasi = Number(mh_harga_kalkulasi) || 0;
     if (mh_divisi === '1' && spandukResult?.hargaSatuanPcs) {
+      const hrgSpandukDenganOngkir =
+        spandukResult.hargaSatuanPcs + (calculatedOngkir.ongkirPerPcs || 0);
       finalHargaKalkulasi = isIncPpn
-        ? Math.round(spandukResult.hargaSatuanPcs * 1.11)
-        : Math.round(spandukResult.hargaSatuanPcs);
+        ? Math.round(hrgSpandukDenganOngkir * 1.11)
+        : Math.round(hrgSpandukDenganOngkir);
     } else if (mh_divisi === '5' && mmtResult?.hargaSatuanPcs) {
+      const hrgMmtDenganOngkir =
+        mmtResult.hargaSatuanPcs + (calculatedOngkir.ongkirPerPcs || 0);
       finalHargaKalkulasi = isIncPpn
-        ? Math.round(mmtResult.hargaSatuanPcs * 1.11)
-        : Math.round(mmtResult.hargaSatuanPcs);
+        ? Math.round(hrgMmtDenganOngkir * 1.11)
+        : Math.round(hrgMmtDenganOngkir);
     } else if (mh_divisi === '4' && garmenCalcResult) {
       const rawHrg =
         garmenCalcResult.hargaUpPerPcs ||
@@ -1586,9 +1778,11 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
         garmenCalcResult.hargaJualPerPcs ||
         garmenCalcResult.hargaJual ||
         0;
+      const hrgGarmenDenganOngkir =
+        rawHrg + (calculatedOngkir.ongkirPerPcs || 0);
       finalHargaKalkulasi = isIncPpn
-        ? Math.round(rawHrg * 1.11)
-        : Math.round(rawHrg);
+        ? Math.round(hrgGarmenDenganOngkir * 1.11)
+        : Math.round(hrgGarmenDenganOngkir);
     }
 
     let finalHargaPengajuan = toNumCurrency(mh_harga);
@@ -1661,13 +1855,8 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       mh_nama,
       mh_jmlorder: toNumCurrency(mh_jmlorder),
       mh_harga: finalHargaPengajuan,
-      mh_ongkir: toNumCurrency(mh_ongkir) || 0,
-      kald_rpkirim:
-        toNumCurrency(mh_jmlorder) > 0
-          ? Math.round(
-              (toNumCurrency(mh_ongkir) || 0) / toNumCurrency(mh_jmlorder),
-            )
-          : toNumCurrency(mh_ongkir) || 0,
+      mh_ongkir: calculatedOngkir.totalOngkir,
+      kald_rpkirim: calculatedOngkir.ongkirPerPcs,
       mh_harga_kalkulasi: finalHargaKalkulasi,
       mh_ket_kalkulasi: finalKetKalkulasi,
       mh_budget: 0,
@@ -1697,6 +1886,8 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
             garmen_warna: garmenWarna,
             garmen_tambahan: garmenSelectedTambahan,
             garmen_cetak: garmenSelectedCetak,
+            mh_workshop: garmenWorkshop === 'PREMIUM' ? 'P04' : 'P01',
+            garmen_workshop: garmenWorkshop === 'PREMIUM' ? 'P04' : 'P01',
           }
         : {}),
     };
@@ -1732,7 +1923,9 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
             ? 'Permintaan harga berhasil diperbarui'
             : isAutoDone
             ? 'Permintaan harga berhasil diajukan (Status: DONE - Disetujui)'
-            : 'Permintaan harga berhasil diajukan (Status: WAIT - Menunggu Persetujuan)',
+            : finalHargaKalkulasi <= 0
+            ? 'Permintaan harga berhasil diajukan (Status: MINTA - Draft)'
+            : 'Permintaan harga berhasil diajukan (Status: NEGO - Menunggu Persetujuan Nego)',
       });
       setSaving(false);
       navigation.navigate('PermintaanHargaList');
@@ -2134,6 +2327,57 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         2 Warna
                       </Text>
                     </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Workshop Garmen (khusus GARMEN) - checklist MEDIUM/PREMIUM default MEDIUM */}
+                <View style={styles.fieldWrap}>
+                  <Text style={styles.label}>
+                    Workshop <Text style={styles.req}>*</Text>
+                  </Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 24,
+                      marginTop: 4,
+                    }}
+                  >
+                    {(['MEDIUM', 'PREMIUM'] as const).map(ws => {
+                      const isChecked = garmenWorkshop === ws;
+                      return (
+                        <TouchableOpacity
+                          key={ws}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            paddingVertical: 4,
+                          }}
+                          activeOpacity={0.7}
+                          onPress={() => setGarmenWorkshop(ws)}
+                        >
+                          <MaterialIcons
+                            name={
+                              isChecked
+                                ? 'check-box'
+                                : 'check-box-outline-blank'
+                            }
+                            size={22}
+                            color={isChecked ? THEME.primary : '#94a3b8'}
+                          />
+                          <Text
+                            style={{
+                              fontSize: 14,
+                              color: isChecked ? THEME.ink : '#64748b',
+                              fontWeight: isChecked ? '700' : '500',
+                            }}
+                          >
+                            {ws} {ws === 'MEDIUM' ? '(P01)' : '(P04)'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
 
@@ -2754,6 +2998,175 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     onChangeText={setMhFinishing}
                     placeholder="Contoh: Mata ayam 4 pojok, Jahit selongsong"
                   />
+
+                  {/* Checklist Selongsong Khusus Divisi MMT */}
+                  {mh_divisi === '5' && (
+                    <View
+                      style={{
+                        marginTop: 10,
+                        backgroundColor: '#f8fafc',
+                        borderRadius: 10,
+                        padding: 10,
+                        borderWidth: 1,
+                        borderColor: '#e2e8f0',
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '700',
+                            color: '#334155',
+                          }}
+                        >
+                          Finishing Selongsong (Kalkulasi Otomatis)
+                        </Text>
+                        {(mmtSelongsongVert || mmtSelongsongHoriz) && (
+                          <View
+                            style={{
+                              backgroundColor: '#e0f2fe',
+                              borderRadius: 4,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: '700',
+                                color: '#0369a1',
+                              }}
+                            >
+                              Plus Selongsong
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          gap: 8,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        {/* Selongsong Vertikal */}
+                        <TouchableOpacity
+                          style={[
+                            styles.ppnCheckboxCard,
+                            {
+                              flex: 1,
+                              minWidth: 140,
+                              marginTop: 0,
+                              paddingVertical: 8,
+                              paddingHorizontal: 10,
+                            },
+                            mmtSelongsongVert && {
+                              borderColor: '#0284c7',
+                              backgroundColor: '#f0f9ff',
+                            },
+                          ]}
+                          onPress={handleToggleSelongsongVert}
+                          activeOpacity={0.8}
+                        >
+                          <View style={styles.ppnCheckboxLeft}>
+                            <MaterialIcons
+                              name={
+                                mmtSelongsongVert
+                                  ? 'check-box'
+                                  : 'check-box-outline-blank'
+                              }
+                              size={20}
+                              color={mmtSelongsongVert ? '#0284c7' : '#94a3b8'}
+                            />
+                            <View style={{ marginLeft: 6, flex: 1 }}>
+                              <Text
+                                style={[
+                                  styles.ppnCheckboxLabel,
+                                  { fontSize: 12 },
+                                  mmtSelongsongVert && {
+                                    color: '#0369a1',
+                                    fontWeight: '700',
+                                  },
+                                ]}
+                              >
+                                Vertikal
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.ppnCheckboxSub,
+                                  { fontSize: 10 },
+                                ]}
+                              >
+                                0.2 x P ({mh_panjang || 0} m)
+                              </Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+
+                        {/* Selongsong Horizontal */}
+                        <TouchableOpacity
+                          style={[
+                            styles.ppnCheckboxCard,
+                            {
+                              flex: 1,
+                              minWidth: 140,
+                              marginTop: 0,
+                              paddingVertical: 8,
+                              paddingHorizontal: 10,
+                            },
+                            mmtSelongsongHoriz && {
+                              borderColor: '#0284c7',
+                              backgroundColor: '#f0f9ff',
+                            },
+                          ]}
+                          onPress={handleToggleSelongsongHoriz}
+                          activeOpacity={0.8}
+                        >
+                          <View style={styles.ppnCheckboxLeft}>
+                            <MaterialIcons
+                              name={
+                                mmtSelongsongHoriz
+                                  ? 'check-box'
+                                  : 'check-box-outline-blank'
+                              }
+                              size={20}
+                              color={mmtSelongsongHoriz ? '#0284c7' : '#94a3b8'}
+                            />
+                            <View style={{ marginLeft: 6, flex: 1 }}>
+                              <Text
+                                style={[
+                                  styles.ppnCheckboxLabel,
+                                  { fontSize: 12 },
+                                  mmtSelongsongHoriz && {
+                                    color: '#0369a1',
+                                    fontWeight: '700',
+                                  },
+                                ]}
+                              >
+                                Horizontal
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.ppnCheckboxSub,
+                                  { fontSize: 10 },
+                                ]}
+                              >
+                                0.2 x L ({mh_lebar || 0} m)
+                              </Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
                 </View>
 
                 <View style={styles.fieldWrap}>
@@ -2865,6 +3278,262 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 </View>
               </View>
             )}
+
+            {/* CARD 3: PENGIRIMAN & ONGKIR */}
+            <View style={[styles.card, { marginTop: 12 }]}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={styles.sectionHeading}>
+                  3. Pengiriman & Ongkir
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setShowOngkirPopover(true)}
+                  style={styles.ongkirInfoBtn}
+                >
+                  <MaterialIcons
+                    name="info-outline"
+                    size={13}
+                    color="#0284c7"
+                  />
+                  <Text style={styles.ongkirInfoBtnText}>Info Tarif</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Mode Selector Konsisten dengan Divisi Chip */}
+              <View style={[styles.divisiRow, { marginBottom: 10 }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.divisiChip,
+                    { flex: 1 },
+                    !isCustomOngkir && styles.divisiChipActive,
+                  ]}
+                  onPress={() => setIsCustomOngkir(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.divisiChipText,
+                      !isCustomOngkir && styles.divisiChipTextActive,
+                    ]}
+                  >
+                    Kota Standar
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.divisiChip,
+                    { flex: 1 },
+                    isCustomOngkir && styles.divisiChipActive,
+                  ]}
+                  onPress={() => setIsCustomOngkir(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.divisiChipText,
+                      isCustomOngkir && styles.divisiChipTextActive,
+                    ]}
+                  >
+                    Custom / Manual
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {!isCustomOngkir ? (
+                <View>
+                  {/* Selector Kota */}
+                  <View style={styles.fieldWrap}>
+                    <Text style={styles.label}>
+                      Alokasi Kota / Area <Text style={styles.req}>*</Text>
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.input,
+                        {
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingVertical: 9,
+                        },
+                      ]}
+                      onPress={() => {
+                        setSearchOngkirQuery('');
+                        setModalOngkirVisible(true);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: 13.5,
+                            fontWeight: '700',
+                            color: THEME.ink,
+                          }}
+                        >
+                          {calculatedOngkir.alokasi || 'Pilih Kota...'}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: '#64748b',
+                            marginTop: 1,
+                          }}
+                        >
+                          Tarif: Rp{' '}
+                          {formatThousandsId(calculatedOngkir.tarifPerKg)}/kg •
+                          Min. {calculatedOngkir.minKg} kg
+                        </Text>
+                      </View>
+                      <MaterialIcons
+                        name="arrow-drop-down"
+                        size={24}
+                        color="#64748b"
+                      />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Ringkasan Perhitungan Ongkir Padat & Efektif */}
+                  <View
+                    style={{
+                      backgroundColor: calculatedOngkir.isFreeCharge
+                        ? '#f0fdf4'
+                        : '#f8fafc',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: calculatedOngkir.isFreeCharge
+                        ? '#bbf7d0'
+                        : '#e2e8f0',
+                      padding: 10,
+                      gap: 6,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, color: '#64748b' }}>
+                        Berat Pesanan ({calculatedOngkir.totalBeratKg} kg):
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '700',
+                          color: THEME.ink,
+                        }}
+                      >
+                        {calculatedOngkir.beratDihitungKg >
+                        calculatedOngkir.totalBeratKg
+                          ? `${calculatedOngkir.beratDihitungKg} kg (Min. ${calculatedOngkir.minKg} kg)`
+                          : `${calculatedOngkir.totalBeratKg} kg`}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        borderTopWidth: 1,
+                        borderTopColor: calculatedOngkir.isFreeCharge
+                          ? '#dcfce7'
+                          : '#f1f5f9',
+                        paddingTop: 6,
+                      }}
+                    >
+                      <View>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '700',
+                            color: calculatedOngkir.isFreeCharge
+                              ? '#15803d'
+                              : THEME.ink,
+                          }}
+                        >
+                          {calculatedOngkir.isFreeCharge
+                            ? 'Bebas Ongkir (Gratis)'
+                            : 'Biaya Ongkir'}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: '600',
+                            color: calculatedOngkir.isFreeCharge
+                              ? '#166534'
+                              : '#0284c7',
+                          }}
+                        >
+                          {calculatedOngkir.isFreeCharge
+                            ? 'Rp 0 /pcs'
+                            : `+Rp ${formatThousandsId(
+                                calculatedOngkir.ongkirPerPcs,
+                              )} /pcs`}
+                        </Text>
+                      </View>
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          fontWeight: '800',
+                          color: calculatedOngkir.isFreeCharge
+                            ? '#15803d'
+                            : '#0284c7',
+                        }}
+                      >
+                        Rp {formatThousandsId(calculatedOngkir.totalOngkir)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View>
+                  {/* Mode Custom Input */}
+                  <View style={styles.fieldWrap}>
+                    <Text style={styles.label}>
+                      Nominal Ongkir (Rp) <Text style={styles.req}>*</Text>
+                    </Text>
+                    <View style={styles.currencyInputWrap}>
+                      <Text style={styles.currencyPrefix}>Rp</Text>
+                      <TextInput
+                        style={styles.currencyInputField}
+                        keyboardType="numeric"
+                        value={
+                          customOngkirVal
+                            ? formatThousandsId(toNumCurrency(customOngkirVal))
+                            : ''
+                        }
+                        onChangeText={val => {
+                          const numeric = val.replace(/[^0-9]/g, '');
+                          setCustomOngkirVal(numeric);
+                          setMhOngkir(numeric);
+                        }}
+                        placeholder="0"
+                        placeholderTextColor="#94a3b8"
+                      />
+                    </View>
+                    <Text style={styles.helperText}>
+                      Biaya per pcs:{' '}
+                      <Text style={{ fontWeight: '700', color: '#0284c7' }}>
+                        +Rp {formatThousandsId(calculatedOngkir.ongkirPerPcs)}{' '}
+                        /pcs
+                      </Text>{' '}
+                      (dibagi{' '}
+                      {formatThousandsId(toNumCurrency(mh_jmlorder) || 1)} pcs)
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </View>
           </View>
         )}
 
@@ -3038,7 +3707,40 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   ) : null}
                 </View>
 
-                {/* Baris 5: Keterangan Tambahan */}
+                {/* Baris 5: Pengiriman & Estimasi Ongkir */}
+                <View style={[styles.specGridRow, { marginTop: 6 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.specGridLabel}>Pengiriman</Text>
+                    <Text style={styles.specGridValue} numberOfLines={1}>
+                      {calculatedOngkir.alokasi}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 8 }}>
+                    <Text style={styles.specGridLabel}>Estimasi Ongkir</Text>
+                    <Text
+                      style={[
+                        styles.specGridValue,
+                        {
+                          color: calculatedOngkir.isFreeCharge
+                            ? '#15803d'
+                            : '#0284c7',
+                          fontWeight: '700',
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {calculatedOngkir.isFreeCharge
+                        ? 'GRATIS'
+                        : `Rp ${formatThousandsId(
+                            calculatedOngkir.totalOngkir,
+                          )} (+Rp ${formatThousandsId(
+                            calculatedOngkir.ongkirPerPcs,
+                          )}/pcs)`}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Baris 6: Keterangan Tambahan */}
                 {mh_ket ? (
                   <View
                     style={{
@@ -3298,69 +4000,100 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         Rp {formatThousandsId(spandukResult.tarifPerMeter)} /Mtr
                       </Text>
                     </View>
-                    <View style={[styles.resultRow, styles.resultTotalRow]}>
-                      <Text style={styles.resultTotalLabel}>
-                        Total Kalkulasi:
-                      </Text>
-                      <Text
-                        style={[
-                          styles.resultTotalValue,
-                          {
-                            color: isIncPpn ? '#15803d' : '#0284c7',
-                            fontSize: 16,
-                          },
-                        ]}
-                      >
-                        Rp{' '}
-                        {formatThousandsId(
-                          isIncPpn
-                            ? Math.round(spandukResult.hargaSatuanPcs * 1.11)
-                            : spandukResult.hargaSatuanPcs,
-                        )}{' '}
-                        /Pcs
-                      </Text>
-                    </View>
-                    {isIncPpn && (
-                      <View style={styles.resultRow}>
-                        <Text
-                          style={[
-                            styles.resultLabel,
-                            { color: '#047857', fontWeight: '700' },
-                          ]}
-                        >
-                          Biaya PPN 11%:
-                        </Text>
-                        <Text
-                          style={[
-                            styles.resultValue,
-                            { color: '#047857', fontWeight: '800' },
-                          ]}
-                        >
-                          +Rp{' '}
-                          {formatThousandsId(
-                            Math.round(spandukResult.totalHarga * 0.11),
-                          )}
-                        </Text>
-                      </View>
-                    )}
                     <View style={styles.resultRow}>
-                      <Text style={[styles.resultLabel, { fontSize: 11 }]}>
-                        Total Order Keseluruhan ({mh_jmlorder || 0} pcs):
+                      <Text style={styles.resultLabel}>
+                        Ongkir ({calculatedOngkir.alokasi}):
                       </Text>
                       <Text
                         style={[
                           styles.resultValue,
-                          { fontSize: 11.5, fontWeight: '700' },
+                          {
+                            color: calculatedOngkir.isFreeCharge
+                              ? '#15803d'
+                              : '#0284c7',
+                            fontWeight: '700',
+                          },
                         ]}
                       >
-                        Rp{' '}
-                        {formatThousandsId(
-                          isIncPpn
-                            ? Math.round(spandukResult.totalHarga * 1.11)
-                            : spandukResult.totalHarga,
-                        )}
+                        {calculatedOngkir.isFreeCharge
+                          ? 'GRATIS'
+                          : `+Rp ${formatThousandsId(
+                              calculatedOngkir.ongkirPerPcs,
+                            )} /Pcs`}
                       </Text>
                     </View>
+                    {(() => {
+                      const dppPerPcs =
+                        spandukResult.hargaSatuanPcs +
+                        (calculatedOngkir.ongkirPerPcs || 0);
+                      const finalPerPcs = isIncPpn
+                        ? Math.round(dppPerPcs * 1.11)
+                        : dppPerPcs;
+                      const orderQty = toNumCurrency(mh_jmlorder) || 1;
+                      const totalOrderKeseluruhan = finalPerPcs * orderQty;
+                      const ppnTotal = isIncPpn
+                        ? Math.round(dppPerPcs * 0.11) * orderQty
+                        : 0;
+
+                      return (
+                        <>
+                          <View
+                            style={[styles.resultRow, styles.resultTotalRow]}
+                          >
+                            <Text style={styles.resultTotalLabel}>
+                              Total Kalkulasi:
+                            </Text>
+                            <Text
+                              style={[
+                                styles.resultTotalValue,
+                                {
+                                  color: isIncPpn ? '#15803d' : '#0284c7',
+                                  fontSize: 16,
+                                },
+                              ]}
+                            >
+                              Rp {formatThousandsId(finalPerPcs)} /Pcs
+                            </Text>
+                          </View>
+                          {isIncPpn && (
+                            <View style={styles.resultRow}>
+                              <Text
+                                style={[
+                                  styles.resultLabel,
+                                  { color: '#047857', fontWeight: '700' },
+                                ]}
+                              >
+                                Biaya PPN 11%:
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.resultValue,
+                                  { color: '#047857', fontWeight: '800' },
+                                ]}
+                              >
+                                +Rp {formatThousandsId(ppnTotal)}
+                              </Text>
+                            </View>
+                          )}
+                          <View style={styles.resultRow}>
+                            <Text
+                              style={[styles.resultLabel, { fontSize: 11 }]}
+                            >
+                              Total Order Keseluruhan (
+                              {formatThousandsId(mh_jmlorder || 0)} pcs):
+                            </Text>
+                            <Text
+                              style={[
+                                styles.resultValue,
+                                { fontSize: 11.5, fontWeight: '700' },
+                              ]}
+                            >
+                              Rp {formatThousandsId(totalOrderKeseluruhan)}
+                            </Text>
+                          </View>
+                        </>
+                      );
+                    })()}
                   </View>
                 ) : null}
 
@@ -3635,6 +4368,151 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   </View>
                 )}
 
+                {/* Checklist Finishing Selongsong (Opsional) */}
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[styles.label, { marginBottom: 6 }]}>
+                    Finishing Selongsong (Opsional)
+                  </Text>
+
+                  {/* Selongsong Vertikal */}
+                  <TouchableOpacity
+                    style={[
+                      styles.ppnCheckboxCard,
+                      mmtSelongsongVert && {
+                        borderColor: '#0284c7',
+                        backgroundColor: '#f0f9ff',
+                      },
+                      { marginTop: 4 },
+                    ]}
+                    onPress={handleToggleSelongsongVert}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.ppnCheckboxLeft}>
+                      <MaterialIcons
+                        name={
+                          mmtSelongsongVert
+                            ? 'check-box'
+                            : 'check-box-outline-blank'
+                        }
+                        size={22}
+                        color={mmtSelongsongVert ? '#0284c7' : '#94a3b8'}
+                      />
+                      <View style={{ marginLeft: 8, flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.ppnCheckboxLabel,
+                            mmtSelongsongVert && {
+                              color: '#0369a1',
+                              fontWeight: '700',
+                            },
+                          ]}
+                        >
+                          Selongsong Vertikal
+                        </Text>
+                        <Text style={styles.ppnCheckboxSub}>
+                          0,2 x P ({mh_panjang || 0} m) x tarif/m²
+                        </Text>
+                      </View>
+                    </View>
+                    {Boolean(
+                      mmtResult?.selongsong?.biayaVerticalPerPcs > 0 &&
+                        mmtSelongsongVert,
+                    ) && (
+                      <View
+                        style={[
+                          styles.ppnBadge,
+                          {
+                            backgroundColor: '#e0f2fe',
+                            borderColor: '#bae6fd',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.ppnBadgeText,
+                            { color: '#0369a1', fontWeight: '700' },
+                          ]}
+                        >
+                          +Rp{' '}
+                          {formatThousandsId(
+                            mmtResult.selongsong.biayaVerticalPerPcs,
+                          )}
+                          /pcs
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Selongsong Horizontal */}
+                  <TouchableOpacity
+                    style={[
+                      styles.ppnCheckboxCard,
+                      mmtSelongsongHoriz && {
+                        borderColor: '#0284c7',
+                        backgroundColor: '#f0f9ff',
+                      },
+                      { marginTop: 8 },
+                    ]}
+                    onPress={handleToggleSelongsongHoriz}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.ppnCheckboxLeft}>
+                      <MaterialIcons
+                        name={
+                          mmtSelongsongHoriz
+                            ? 'check-box'
+                            : 'check-box-outline-blank'
+                        }
+                        size={22}
+                        color={mmtSelongsongHoriz ? '#0284c7' : '#94a3b8'}
+                      />
+                      <View style={{ marginLeft: 8, flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.ppnCheckboxLabel,
+                            mmtSelongsongHoriz && {
+                              color: '#0369a1',
+                              fontWeight: '700',
+                            },
+                          ]}
+                        >
+                          Selongsong Horizontal
+                        </Text>
+                        <Text style={styles.ppnCheckboxSub}>
+                          0,2 x L ({mh_lebar || 0} m) x tarif/m²
+                        </Text>
+                      </View>
+                    </View>
+                    {Boolean(
+                      mmtResult?.selongsong?.biayaHorizontalPerPcs > 0 &&
+                        mmtSelongsongHoriz,
+                    ) && (
+                      <View
+                        style={[
+                          styles.ppnBadge,
+                          {
+                            backgroundColor: '#e0f2fe',
+                            borderColor: '#bae6fd',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.ppnBadgeText,
+                            { color: '#0369a1', fontWeight: '700' },
+                          ]}
+                        >
+                          +Rp{' '}
+                          {formatThousandsId(
+                            mmtResult.selongsong.biayaHorizontalPerPcs,
+                          )}
+                          /pcs
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
                 {/* BANNER DETEKSI DATA BERUBAH (MMT) */}
                 {isMmtStale && (
                   <TouchableOpacity
@@ -3882,69 +4760,132 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         </Text>
                       </View>
                     )}
-                    <View style={[styles.resultRow, styles.resultTotalRow]}>
-                      <Text style={styles.resultTotalLabel}>
-                        Total Kalkulasi:
-                      </Text>
-                      <Text
-                        style={[
-                          styles.resultTotalValue,
-                          {
-                            color: isIncPpn ? '#15803d' : '#0284c7',
-                            fontSize: 16,
-                          },
-                        ]}
-                      >
-                        Rp{' '}
-                        {formatThousandsId(
-                          isIncPpn
-                            ? Math.round(mmtResult.hargaSatuanPcs * 1.11)
-                            : mmtResult.hargaSatuanPcs,
-                        )}{' '}
-                        /Pcs
-                      </Text>
-                    </View>
-                    {isIncPpn && (
+                    {Boolean(mmtResult.selongsong?.isVertical) && (
                       <View style={styles.resultRow}>
-                        <Text
-                          style={[
-                            styles.resultLabel,
-                            { color: '#047857', fontWeight: '700' },
-                          ]}
-                        >
-                          Biaya PPN 11%:
+                        <Text style={styles.resultLabel}>
+                          Selongsong Vertikal (0,2 x {mh_panjang}m):
                         </Text>
                         <Text
-                          style={[
-                            styles.resultValue,
-                            { color: '#047857', fontWeight: '800' },
-                          ]}
+                          style={[styles.resultValue, { color: '#0284c7' }]}
                         >
                           +Rp{' '}
                           {formatThousandsId(
-                            Math.round(mmtResult.totalHarga * 0.11),
-                          )}
+                            mmtResult.selongsong.biayaVerticalPerPcs,
+                          )}{' '}
+                          /pcs
+                        </Text>
+                      </View>
+                    )}
+                    {Boolean(mmtResult.selongsong?.isHorizontal) && (
+                      <View style={styles.resultRow}>
+                        <Text style={styles.resultLabel}>
+                          Selongsong Horizontal (0,2 x {mh_lebar}m):
+                        </Text>
+                        <Text
+                          style={[styles.resultValue, { color: '#0284c7' }]}
+                        >
+                          +Rp{' '}
+                          {formatThousandsId(
+                            mmtResult.selongsong.biayaHorizontalPerPcs,
+                          )}{' '}
+                          /pcs
                         </Text>
                       </View>
                     )}
                     <View style={styles.resultRow}>
-                      <Text style={[styles.resultLabel, { fontSize: 11 }]}>
-                        Total Order Keseluruhan ({mh_jmlorder || 0} pcs):
+                      <Text style={styles.resultLabel}>
+                        Ongkir ({calculatedOngkir.alokasi}):
                       </Text>
                       <Text
                         style={[
                           styles.resultValue,
-                          { fontSize: 11.5, fontWeight: '700' },
+                          {
+                            color: calculatedOngkir.isFreeCharge
+                              ? '#15803d'
+                              : '#0284c7',
+                            fontWeight: '700',
+                          },
                         ]}
                       >
-                        Rp{' '}
-                        {formatThousandsId(
-                          isIncPpn
-                            ? Math.round(mmtResult.totalHarga * 1.11)
-                            : mmtResult.totalHarga,
-                        )}
+                        {calculatedOngkir.isFreeCharge
+                          ? 'GRATIS'
+                          : `+Rp ${formatThousandsId(
+                              calculatedOngkir.ongkirPerPcs,
+                            )} /Pcs`}
                       </Text>
                     </View>
+                    {(() => {
+                      const dppPerPcs =
+                        mmtResult.hargaSatuanPcs +
+                        (calculatedOngkir.ongkirPerPcs || 0);
+                      const finalPerPcs = isIncPpn
+                        ? Math.round(dppPerPcs * 1.11)
+                        : dppPerPcs;
+                      const orderQty = toNumCurrency(mh_jmlorder) || 1;
+                      const totalOrderKeseluruhan = finalPerPcs * orderQty;
+                      const ppnTotal = isIncPpn
+                        ? Math.round(dppPerPcs * 0.11) * orderQty
+                        : 0;
+
+                      return (
+                        <>
+                          <View
+                            style={[styles.resultRow, styles.resultTotalRow]}
+                          >
+                            <Text style={styles.resultTotalLabel}>
+                              Total Kalkulasi:
+                            </Text>
+                            <Text
+                              style={[
+                                styles.resultTotalValue,
+                                {
+                                  color: isIncPpn ? '#15803d' : '#0284c7',
+                                  fontSize: 16,
+                                },
+                              ]}
+                            >
+                              Rp {formatThousandsId(finalPerPcs)} /Pcs
+                            </Text>
+                          </View>
+                          {isIncPpn && (
+                            <View style={styles.resultRow}>
+                              <Text
+                                style={[
+                                  styles.resultLabel,
+                                  { color: '#047857', fontWeight: '700' },
+                                ]}
+                              >
+                                Biaya PPN 11%:
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.resultValue,
+                                  { color: '#047857', fontWeight: '800' },
+                                ]}
+                              >
+                                +Rp {formatThousandsId(ppnTotal)}
+                              </Text>
+                            </View>
+                          )}
+                          <View style={styles.resultRow}>
+                            <Text
+                              style={[styles.resultLabel, { fontSize: 11 }]}
+                            >
+                              Total Order Keseluruhan (
+                              {formatThousandsId(mh_jmlorder || 0)} pcs):
+                            </Text>
+                            <Text
+                              style={[
+                                styles.resultValue,
+                                { fontSize: 11.5, fontWeight: '700' },
+                              ]}
+                            >
+                              Rp {formatThousandsId(totalOrderKeseluruhan)}
+                            </Text>
+                          </View>
+                        </>
+                      );
+                    })()}
                   </View>
                 ) : null}
 
@@ -4297,6 +5238,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       {garmenSelectedCetak.map((cItem, cIdx) => {
                         const qtyOrder = toNumCurrency(mh_jmlorder);
                         const sub = cItem.biaya * qtyOrder;
+                        const ukDesc = getSablonUkuranDesc(cItem.ket);
                         return (
                           <View
                             key={cIdx}
@@ -4325,6 +5267,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                               <Text style={{ fontSize: 11, color: '#64748b' }}>
                                 Rp {cItem.biaya.toLocaleString('id-ID')}/pcs x{' '}
                                 {qtyOrder} pcs
+                                {ukDesc ? ` • Ukuran: ${ukDesc}` : ''}
                               </Text>
                             </View>
                             <View
@@ -4534,103 +5477,111 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       </View>
                     )}
 
-                    {/* Total Kalkulasi per Pcs */}
-                    <View style={[styles.resultRow, styles.resultTotalRow]}>
-                      <Text style={styles.resultTotalLabel}>
-                        Total Kalkulasi:
-                      </Text>
-                      <Text
-                        style={[
-                          styles.resultTotalValue,
-                          {
-                            color: isIncPpn ? '#15803d' : '#0284c7',
-                            fontSize: 16,
-                          },
-                        ]}
-                      >
-                        Rp{' '}
-                        {formatThousandsId(
-                          isIncPpn
-                            ? Math.round(
-                                (garmenCalcResult.hargaUpPerPcs ||
-                                  garmenCalcResult.hargaJualRevisi ||
-                                  garmenCalcResult.hargaJualPerPcs ||
-                                  garmenCalcResult.hargaJual ||
-                                  0) * 1.11,
-                              )
-                            : garmenCalcResult.hargaUpPerPcs ||
-                                garmenCalcResult.hargaJualRevisi ||
-                                garmenCalcResult.hargaJualPerPcs ||
-                                garmenCalcResult.hargaJual ||
-                                0,
-                        )}{' '}
-                        /Pcs
-                      </Text>
-                    </View>
-
-                    {/* Row PPN 11% jika INC PPN aktif */}
-                    {isIncPpn && (
-                      <View style={styles.resultRow}>
-                        <Text
-                          style={[
-                            styles.resultLabel,
-                            { color: '#047857', fontWeight: '700' },
-                          ]}
-                        >
-                          Biaya PPN 11%:
-                        </Text>
-                        <Text
-                          style={[
-                            styles.resultValue,
-                            { color: '#047857', fontWeight: '800' },
-                          ]}
-                        >
-                          +Rp{' '}
-                          {formatThousandsId(
-                            Math.round(
-                              (garmenCalcResult.totalHargaOrder ||
-                                Number(
-                                  garmenCalcResult.hargaUpPerPcs ||
-                                    garmenCalcResult.hargaJual ||
-                                    0,
-                                ) * toNumCurrency(mh_jmlorder)) * 0.11,
-                            ),
-                          )}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Total Order Keseluruhan */}
                     <View style={styles.resultRow}>
-                      <Text style={[styles.resultLabel, { fontSize: 11 }]}>
-                        Total Order Keseluruhan ({mh_jmlorder || 0} pcs):
+                      <Text style={styles.resultLabel}>
+                        Ongkir ({calculatedOngkir.alokasi}):
                       </Text>
                       <Text
                         style={[
                           styles.resultValue,
-                          { fontSize: 11.5, fontWeight: '700' },
+                          {
+                            color: calculatedOngkir.isFreeCharge
+                              ? '#15803d'
+                              : '#0284c7',
+                            fontWeight: '700',
+                          },
                         ]}
                       >
-                        Rp{' '}
-                        {formatThousandsId(
-                          isIncPpn
-                            ? Math.round(
-                                (garmenCalcResult.totalHargaOrder ||
-                                  Number(
-                                    garmenCalcResult.hargaUpPerPcs ||
-                                      garmenCalcResult.hargaJual ||
-                                      0,
-                                  ) * toNumCurrency(mh_jmlorder)) * 1.11,
-                              )
-                            : garmenCalcResult.totalHargaOrder ||
-                                Number(
-                                  garmenCalcResult.hargaUpPerPcs ||
-                                    garmenCalcResult.hargaJual ||
-                                    0,
-                                ) * toNumCurrency(mh_jmlorder),
-                        )}
+                        {calculatedOngkir.isFreeCharge
+                          ? 'GRATIS'
+                          : `+Rp ${formatThousandsId(
+                              calculatedOngkir.ongkirPerPcs,
+                            )} /Pcs`}
                       </Text>
                     </View>
+
+                    {/* Total Kalkulasi per Pcs */}
+                    {(() => {
+                      const rawHrg =
+                        garmenCalcResult.hargaUpPerPcs ||
+                        garmenCalcResult.hargaJualRevisi ||
+                        garmenCalcResult.hargaJualPerPcs ||
+                        garmenCalcResult.hargaJual ||
+                        0;
+                      const dppPerPcs =
+                        rawHrg + (calculatedOngkir.ongkirPerPcs || 0);
+                      const finalPerPcs = isIncPpn
+                        ? Math.round(dppPerPcs * 1.11)
+                        : dppPerPcs;
+                      const orderQty = toNumCurrency(mh_jmlorder) || 1;
+                      const totalOrderKeseluruhan = finalPerPcs * orderQty;
+                      const ppnTotal = isIncPpn
+                        ? Math.round(dppPerPcs * 0.11) * orderQty
+                        : 0;
+
+                      return (
+                        <>
+                          <View
+                            style={[styles.resultRow, styles.resultTotalRow]}
+                          >
+                            <Text style={styles.resultTotalLabel}>
+                              Total Kalkulasi:
+                            </Text>
+                            <Text
+                              style={[
+                                styles.resultTotalValue,
+                                {
+                                  color: isIncPpn ? '#15803d' : '#0284c7',
+                                  fontSize: 16,
+                                },
+                              ]}
+                            >
+                              Rp {formatThousandsId(finalPerPcs)} /Pcs
+                            </Text>
+                          </View>
+
+                          {/* Row PPN 11% jika INC PPN aktif */}
+                          {isIncPpn && (
+                            <View style={styles.resultRow}>
+                              <Text
+                                style={[
+                                  styles.resultLabel,
+                                  { color: '#047857', fontWeight: '700' },
+                                ]}
+                              >
+                                Biaya PPN 11%:
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.resultValue,
+                                  { color: '#047857', fontWeight: '800' },
+                                ]}
+                              >
+                                +Rp {formatThousandsId(ppnTotal)}
+                              </Text>
+                            </View>
+                          )}
+
+                          {/* Total Order Keseluruhan */}
+                          <View style={styles.resultRow}>
+                            <Text
+                              style={[styles.resultLabel, { fontSize: 11 }]}
+                            >
+                              Total Order Keseluruhan (
+                              {formatThousandsId(mh_jmlorder || 0)} pcs):
+                            </Text>
+                            <Text
+                              style={[
+                                styles.resultValue,
+                                { fontSize: 11.5, fontWeight: '700' },
+                              ]}
+                            >
+                              Rp {formatThousandsId(totalOrderKeseluruhan)}
+                            </Text>
+                          </View>
+                        </>
+                      );
+                    })()}
                   </View>
                 )}
 
@@ -4670,21 +5621,13 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                         garmenCalcResult.tanggaMargin) && (
                         <View style={styles.strataTableBox}>
                           <View style={styles.strataTableHeader}>
-                            <Text style={[styles.strataTh, { flex: 2 }]}>
+                            <Text style={[styles.strataTh, { flex: 1.2 }]}>
                               Rentang Qty
                             </Text>
                             <Text
                               style={[
                                 styles.strataTh,
-                                { flex: 1, textAlign: 'center' },
-                              ]}
-                            >
-                              Margin
-                            </Text>
-                            <Text
-                              style={[
-                                styles.strataTh,
-                                { flex: 1.5, textAlign: 'right' },
+                                { flex: 1, textAlign: 'right' },
                               ]}
                             >
                               Harga / Pcs
@@ -4702,8 +5645,6 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                                   garmenCalcResult.strataAktif?.tier) ||
                               (toNumCurrency(mh_jmlorder) >= qmin &&
                                 toNumCurrency(mh_jmlorder) <= qmax);
-                            const persen =
-                              tier.persen ?? tier.marginPercent ?? 0;
                             const hargaTier =
                               tier.up ?? tier.jual ?? tier.hargaJual ?? 0;
 
@@ -4718,7 +5659,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                                 <Text
                                   style={[
                                     styles.strataTd,
-                                    { flex: 2 },
+                                    { flex: 1.2 },
                                     isActive && styles.strataTdActive,
                                   ]}
                                 >
@@ -4732,16 +5673,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                                 <Text
                                   style={[
                                     styles.strataTd,
-                                    { flex: 1, textAlign: 'center' },
-                                    isActive && styles.strataTdActive,
-                                  ]}
-                                >
-                                  {persen}%
-                                </Text>
-                                <Text
-                                  style={[
-                                    styles.strataTd,
-                                    { flex: 1.5, textAlign: 'right' },
+                                    { flex: 1, textAlign: 'right' },
                                     isActive && styles.strataTdActive,
                                   ]}
                                 >
@@ -5211,35 +6143,39 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 )}
 
                 {/* Biaya Ongkir Review Row */}
-                {toNumCurrency(mh_ongkir) > 0 ? (
-                  <View style={[styles.reviewRow, { marginTop: 4 }]}>
-                    <Text style={[styles.reviewLabel, { color: '#0369a1' }]}>
-                      Ongkir (Luar Jawa):
-                    </Text>
-                    <Text
-                      style={[
-                        styles.reviewValBold,
-                        { fontSize: 13, color: '#0284c7' },
-                      ]}
-                    >
-                      Rp {formatThousandsId(toNumCurrency(mh_ongkir))}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={[styles.reviewRow, { marginTop: 4 }]}>
-                    <Text style={styles.reviewLabel}>Ongkos Kirim:</Text>
-                    <Text
-                      style={[
-                        styles.reviewValBold,
-                        { fontSize: 12, color: '#15803d' },
-                      ]}
-                    >
-                      {toNumCurrency(mh_ongkir) > 0
-                        ? `Rp ${formatThousandsId(toNumCurrency(mh_ongkir))}`
-                        : 'Rp 0'}
-                    </Text>
-                  </View>
-                )}
+                <View style={[styles.reviewRow, { marginTop: 4 }]}>
+                  <Text
+                    style={[
+                      styles.reviewLabel,
+                      {
+                        color: calculatedOngkir.isFreeCharge
+                          ? '#15803d'
+                          : '#0369a1',
+                      },
+                    ]}
+                  >
+                    Ongkir ({calculatedOngkir.alokasi}):
+                  </Text>
+                  <Text
+                    style={[
+                      styles.reviewValBold,
+                      {
+                        fontSize: 13,
+                        color: calculatedOngkir.isFreeCharge
+                          ? '#15803d'
+                          : '#0284c7',
+                      },
+                    ]}
+                  >
+                    {calculatedOngkir.isFreeCharge
+                      ? 'GRATIS ONGKIR'
+                      : `Rp ${formatThousandsId(
+                          calculatedOngkir.totalOngkir,
+                        )} (+Rp ${formatThousandsId(
+                          calculatedOngkir.ongkirPerPcs,
+                        )} /pcs)`}
+                  </Text>
+                </View>
 
                 {/* Keterangan Kalkulasi Review */}
                 <View
@@ -5624,102 +6560,6 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     (toNumCurrency(mh_harga) || 0) * toNumCurrency(mh_jmlorder),
                   )}
                 </Text>
-              </View>
-
-              {/* Input Biaya Ongkir (Opsional) */}
-              <View style={[styles.fieldWrap, { marginTop: 12 }]}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: 4,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <Text style={styles.label}>Ongkir (Opsional)</Text>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => setShowOngkirPopover(v => !v)}
-                      style={styles.infoIconBtn}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <MaterialIcons
-                        name={showOngkirPopover ? 'info-outline' : 'info'}
-                        size={16}
-                        color={showOngkirPopover ? '#64748b' : '#0284c7'}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <View style={styles.currencyInputWrap}>
-                  <Text style={styles.currencyPrefix}>Rp</Text>
-                  <TextInput
-                    style={styles.currencyInputField}
-                    keyboardType="numeric"
-                    value={
-                      mh_ongkir
-                        ? formatThousandsId(toNumCurrency(mh_ongkir))
-                        : ''
-                    }
-                    onChangeText={val => {
-                      const numeric = val.replace(/[^0-9]/g, '');
-                      setMhOngkir(numeric);
-                    }}
-                    placeholder="0"
-                    placeholderTextColor="#94a3b8"
-                  />
-                </View>
-
-                {/* Popover Informasi Ketentuan Ongkir */}
-                {showOngkirPopover && (
-                  <View style={styles.ongkirPopoverBox}>
-                    <View style={styles.ongkirPopoverHeader}>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}
-                      >
-                        <MaterialIcons
-                          name="local-shipping"
-                          size={16}
-                          color="#0284c7"
-                        />
-                        <Text style={styles.ongkirPopoverTitle}>
-                          Ketentuan Ongkos Kirim
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => setShowOngkirPopover(false)}
-                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      >
-                        <MaterialIcons name="close" size={16} color="#64748b" />
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.ongkirPopoverText}>
-                      •{' '}
-                      <Text style={{ fontWeight: '700', color: '#0369a1' }}>
-                        Pulau Jawa:
-                      </Text>{' '}
-                      Gratis Ongkir.
-                    </Text>
-                    <Text style={styles.ongkirPopoverText}>
-                      •{' '}
-                      <Text style={{ fontWeight: '700', color: '#b45309' }}>
-                        Luar Pulau Jawa:
-                      </Text>{' '}
-                      Ongkir ditanggung customer.
-                    </Text>
-                  </View>
-                )}
               </View>
 
               {/* Input Alasan Permintaan (Masuk ke mh_ket_kalkulasi) */}
@@ -7030,6 +7870,41 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   </View>
                 </View>
 
+                {/* Panduan Ukuran Sablon Standar */}
+                {cetakActiveCategory === 'SABLON' && (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: '#eff6ff',
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                      marginHorizontal: 16,
+                      marginBottom: 8,
+                      gap: 6,
+                      borderWidth: 1,
+                      borderColor: '#bfdbfe',
+                    }}
+                  >
+                    <MaterialIcons name="straighten" size={16} color="#2563eb" />
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: '#1e40af',
+                        flex: 1,
+                        fontWeight: '500',
+                        lineHeight: 16,
+                      }}
+                    >
+                      Keterangan Ukuran:{' '}
+                      <Text style={{ fontWeight: '700' }}>A3</Text> (29.7 × 42 cm) •{' '}
+                      <Text style={{ fontWeight: '700' }}>A4</Text> (21 × 29.7 cm) •{' '}
+                      <Text style={{ fontWeight: '700' }}>A5</Text> (14.8 × 21 cm)
+                    </Text>
+                  </View>
+                )}
+
                 {/* List Item Bersih & Ringan */}
                 <FlatList
                   data={garmenCetakMaster.filter((cItem: any) => {
@@ -7047,11 +7922,36 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       ''
                     ).toUpperCase();
 
-                    if (
-                      cetakActiveCategory === 'SABLON' &&
-                      sablonSubCategory !== 'ALL'
-                    ) {
-                      if (!ket.includes(sablonSubCategory)) return false;
+                    if (cetakActiveCategory === 'SABLON') {
+                      if (
+                        sablonSubCategory !== 'ALL' &&
+                        !ket.includes(sablonSubCategory)
+                      ) {
+                        return false;
+                      }
+
+                      // Jika tidak sedang melakukan pencarian teks manual, filter sesuai kategori kain aktif
+                      if (!searchGarmenCetak.trim()) {
+                        const curKtg = (
+                          garmenKategoriKain || 'COTTON'
+                        ).toUpperCase();
+                        const isPe =
+                          curKtg.includes('PE') ||
+                          curKtg.includes('HYGIT') ||
+                          curKtg.includes('DRYFIT');
+                        const isLacost = curKtg.includes('LACOST');
+
+                        if (isPe) {
+                          if (!ket.endsWith(' PE')) return false;
+                        } else if (isLacost) {
+                          if (ket.endsWith(' PE') || ket.endsWith(' COTTON'))
+                            return false;
+                        } else {
+                          // Cotton
+                          if (ket.endsWith(' PE') || ket.endsWith(' LACOST'))
+                            return false;
+                        }
+                      }
                     }
 
                     if (searchGarmenCetak.trim()) {
@@ -7072,6 +7972,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                     ).toUpperCase();
                     const ket = item.mhb_ket || item.ket || item.nama || jenis;
                     const biaya = Number(item.mhb_biaya || item.biaya || 0);
+                    const ukDesc = getSablonUkuranDesc(ket);
 
                     return (
                       <TouchableOpacity
@@ -7108,9 +8009,9 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                           Toast.show({
                             type: 'glassSuccess',
                             text1: `${itemJenis} Ditambahkan`,
-                            text2: `${itemKet} - Rp ${itemBiaya.toLocaleString(
-                              'id-ID',
-                            )}/pcs`,
+                            text2: `${itemKet}${
+                              ukDesc ? ` (${ukDesc})` : ''
+                            } - Rp ${itemBiaya.toLocaleString('id-ID')}/pcs`,
                           });
                         }}
                       >
@@ -7118,12 +8019,43 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                           <Text
                             style={{
                               fontSize: 13,
-                              fontWeight: '500',
+                              fontWeight: '600',
                               color: THEME.ink,
                             }}
                           >
                             {ket}
                           </Text>
+                          {!!ukDesc && (
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                                marginTop: 3,
+                              }}
+                            >
+                              <View
+                                style={{
+                                  backgroundColor: '#f1f5f9',
+                                  borderRadius: 4,
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 1.5,
+                                  borderWidth: 1,
+                                  borderColor: '#e2e8f0',
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: '700',
+                                    color: '#475569',
+                                  }}
+                                >
+                                  Ukuran: {ukDesc}
+                                </Text>
+                              </View>
+                            </View>
+                          )}
                         </View>
                         <Text
                           style={{
@@ -7276,7 +8208,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                           { color: '#b45309' },
                         ]}
                       >
-                        STATUS: WAIT (Memerlukan Persetujuan)
+                        STATUS: NEGO (Memerlukan Persetujuan)
                       </Text>
                       <Text
                         style={[
@@ -7358,6 +8290,334 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL SEARCH & PILIH KOTA PENGIRIMAN */}
+      <Modal
+        visible={modalOngkirVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalOngkirVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContentCard,
+              {
+                paddingTop: insets.top + 10,
+                paddingBottom: insets.bottom + 16,
+              },
+            ]}
+          >
+            {/* Modal Header */}
+            <View style={styles.modalHeaderRow}>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
+                <View
+                  style={[
+                    styles.modalHeaderIconWrap,
+                    { backgroundColor: '#e0f2fe' },
+                  ]}
+                >
+                  <MaterialIcons
+                    name="local-shipping"
+                    size={20}
+                    color="#0284c7"
+                  />
+                </View>
+                <View>
+                  <Text style={styles.modalHeaderTitle}>
+                    Pilih Kota Pengiriman
+                  </Text>
+                  <Text style={styles.modalHeaderSub}>
+                    Pilih area tujuan untuk menghitung tarif ongkir
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setModalOngkirVisible(false)}
+              >
+                <MaterialIcons name="close" size={22} color={THEME.ink} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Input Box */}
+            <View style={styles.modalSearchArea}>
+              <View style={styles.modalSearchBox}>
+                <MaterialIcons
+                  name="search"
+                  size={20}
+                  color="#64748b"
+                  style={{ marginRight: 6 }}
+                />
+                <TextInput
+                  style={styles.modalSearchInput}
+                  placeholder="Cari nama kota / area..."
+                  placeholderTextColor="#94a3b8"
+                  value={searchOngkirQuery}
+                  onChangeText={setSearchOngkirQuery}
+                />
+                {searchOngkirQuery ? (
+                  <TouchableOpacity onPress={() => setSearchOngkirQuery('')}>
+                    <MaterialIcons name="cancel" size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Hint Box Bebas Ongkir */}
+            <View
+              style={{
+                marginHorizontal: 16,
+                marginBottom: 10,
+                padding: 8,
+                borderRadius: 8,
+                backgroundColor: '#f0fdf4',
+                borderWidth: 1,
+                borderColor: '#bbf7d0',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <MaterialIcons name="local-offer" size={16} color="#15803d" />
+              <Text style={{ fontSize: 11, color: '#166534', flex: 1 }}>
+                Area kota tertentu di Jawa otomatis Bebas Ongkir jika memenuhi
+                minimal order.
+              </Text>
+            </View>
+
+            {/* List Kota Pengiriman */}
+            <FlatList
+              data={activeOngkirMasterList.filter(item => {
+                if (!searchOngkirQuery.trim()) return true;
+                return (item.alokasi || '')
+                  .toLowerCase()
+                  .includes(searchOngkirQuery.toLowerCase());
+              })}
+              keyExtractor={(item, index) => String(item.id || index)}
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingBottom: 20,
+              }}
+              renderItem={({ item }) => {
+                const isSelected =
+                  !isCustomOngkir &&
+                  alokasiOngkir.toLowerCase() ===
+                    (item.alokasi || '').toLowerCase();
+                const hasFreeRule =
+                  (item.free_spanduk_m || 0) > 0 ||
+                  (item.free_mmt_m2 || 0) > 0 ||
+                  (item.free_garmen_pcs || 0) > 0;
+
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.ongkirCityItemCard,
+                      isSelected && styles.ongkirCityItemCardActive,
+                    ]}
+                    onPress={() => {
+                      setAlokasiOngkir(item.alokasi);
+                      setIsCustomOngkir(false);
+                      setModalOngkirVisible(false);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <Text style={styles.ongkirCityItemTitle}>
+                          {item.alokasi}
+                        </Text>
+                        {hasFreeRule ? (
+                          <View style={styles.ongkirCityItemBadge}>
+                            <Text style={styles.ongkirCityItemBadgeText}>
+                              Gratis Ongkir Ready
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.ongkirCityItemDetail}>
+                        Tarif: Rp {formatThousandsId(item.harga_kg || 0)} /kg •
+                        Minimal {item.min_kg || 20} kg
+                      </Text>
+                    </View>
+
+                    <MaterialIcons
+                      name={
+                        isSelected
+                          ? 'radio-button-checked'
+                          : 'radio-button-unchecked'
+                      }
+                      size={22}
+                      color={isSelected ? '#0284c7' : '#cbd5e1'}
+                    />
+                  </TouchableOpacity>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, color: '#94a3b8' }}>
+                    Kota / area tidak ditemukan
+                  </Text>
+                </View>
+              }
+            />
+
+            {/* Opsi Custom / Manual di Bawah */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 6 }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: '#f1f5f9',
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                }}
+                onPress={() => {
+                  setIsCustomOngkir(true);
+                  setModalOngkirVisible(false);
+                }}
+              >
+                <MaterialIcons name="edit" size={18} color="#475569" />
+                <Text
+                  style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}
+                >
+                  Gunakan Ongkir Custom / Manual
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL KETENTUAN ONGKOS KIRIM & RUMUS */}
+      <Modal
+        visible={showOngkirPopover}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowOngkirPopover(false)}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={[styles.confirmModalCard, { maxWidth: 420 }]}>
+            <View style={styles.confirmModalHeader}>
+              <View
+                style={[
+                  styles.confirmModalIconWrap,
+                  { backgroundColor: '#e0f2fe' },
+                ]}
+              >
+                <MaterialIcons
+                  name="local-shipping"
+                  size={26}
+                  color="#0284c7"
+                />
+              </View>
+              <Text style={styles.confirmModalTitle}>
+                Ketentuan & Rumus Ongkos Kirim
+              </Text>
+              <Text style={styles.confirmModalSub}>
+                Panduan perhitungan tarif ekspedisi darat & ketentuan gratis
+                ongkir
+              </Text>
+            </View>
+
+            <ScrollView style={{ maxHeight: 360, marginBottom: 12 }}>
+              {/* Seksi 1: Rasio Berat */}
+              <View style={styles.infoSectionCard}>
+                <Text style={styles.infoSectionTitle}>
+                  ⚖️ Rasio Konversi Berat ke Kilogram (Kg):
+                </Text>
+                <Text style={styles.ongkirPopoverText}>
+                  • <Text style={{ fontWeight: '700' }}>Spanduk:</Text> 10 meter
+                  = 1 kg (0.1 kg/m)
+                </Text>
+                <Text style={styles.ongkirPopoverText}>
+                  • <Text style={{ fontWeight: '700' }}>MMT:</Text> 2 m² = 1 kg
+                  (0.5 kg/m²)
+                </Text>
+                <Text style={styles.ongkirPopoverText}>
+                  • <Text style={{ fontWeight: '700' }}>Garmen Medium:</Text> 5
+                  pcs = 1 kg
+                </Text>
+                <Text style={styles.ongkirPopoverText}>
+                  • <Text style={{ fontWeight: '700' }}>Garmen Premium:</Text> 3
+                  pcs = 1 kg
+                </Text>
+              </View>
+
+              {/* Seksi 2: Minimal Berat */}
+              <View style={styles.infoSectionCard}>
+                <Text style={styles.infoSectionTitle}>
+                  📦 Ketentuan Minimal Berat Kirim:
+                </Text>
+                <Text style={styles.ongkirPopoverText}>
+                  •{' '}
+                  <Text style={{ fontWeight: '700', color: '#0369a1' }}>
+                    Kota-Kota Jawa:
+                  </Text>{' '}
+                  Minimal berat dikenakan biaya adalah{' '}
+                  <Text style={{ fontWeight: '700' }}>20 Kg</Text>.
+                </Text>
+                <Text style={styles.ongkirPopoverText}>
+                  •{' '}
+                  <Text style={{ fontWeight: '700', color: '#b45309' }}>
+                    Luar Pulau Jawa:
+                  </Text>{' '}
+                  Minimal berat dikenakan biaya adalah{' '}
+                  <Text style={{ fontWeight: '700' }}>40 Kg</Text> (Sumatra,
+                  Sulawesi, Kalimantan, Bali, Nusa Tenggara).
+                </Text>
+              </View>
+
+              {/* Seksi 3: Syarat Free Ongkir */}
+              <View
+                style={[
+                  styles.infoSectionCard,
+                  { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
+                ]}
+              >
+                <Text style={[styles.infoSectionTitle, { color: '#15803d' }]}>
+                  Syarat Bebas Ongkir:
+                </Text>
+                <Text style={[styles.ongkirPopoverText, { color: '#166534' }]}>
+                  Berlaku untuk kota utama Jawa (Jakarta, Bandung, Yogya,
+                  Sidoarjo, Surabaya, Surakarta):
+                </Text>
+                <Text style={[styles.ongkirPopoverText, { color: '#166534' }]}>
+                  • Spanduk $\ge$ 1.000 Meter
+                </Text>
+                <Text style={[styles.ongkirPopoverText, { color: '#166534' }]}>
+                  • MMT $\ge$ 500 m²
+                </Text>
+                <Text style={[styles.ongkirPopoverText, { color: '#166534' }]}>
+                  • Garmen $\ge$ 300 Pcs
+                </Text>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[
+                styles.confirmBtnSubmit,
+                { backgroundColor: '#0284c7', width: '100%' },
+              ]}
+              onPress={() => setShowOngkirPopover(false)}
+            >
+              <Text style={styles.confirmBtnSubmitText}>Tutup</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -8663,6 +9923,214 @@ const styles = StyleSheet.create({
     color: '#334155',
     lineHeight: 16,
     marginTop: 2,
+  },
+
+  helperText: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 4,
+  },
+
+  // Ongkir Element Styles
+  ongkirCardIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#e0f2fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ongkirSubheading: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  ongkirInfoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  ongkirInfoBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  ongkirModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  ongkirModeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  ongkirModeChipActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#0284c7',
+  },
+  ongkirModeChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  ongkirModeChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  ongkirPickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  ongkirPickerCityName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  ongkirPickerCitySub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  ongkirCalcSummaryBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginTop: 4,
+    gap: 8,
+  },
+  ongkirSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  ongkirSummaryLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  ongkirSummaryVal: {
+    fontSize: 12.5,
+    color: THEME.ink,
+    fontWeight: '700',
+  },
+  ongkirFreeNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 2,
+  },
+  ongkirFreeNoticeTitle: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#15803d',
+  },
+  ongkirFreeNoticeSub: {
+    fontSize: 10.5,
+    color: '#166534',
+    marginTop: 1,
+    lineHeight: 14,
+  },
+  ongkirTotalHighlightRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    paddingTop: 8,
+    marginTop: 2,
+  },
+  ongkirTotalHighlightLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  ongkirTotalHighlightVal: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0284c7',
+  },
+  ongkirPerUnitText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284c7',
+    marginTop: 1,
+  },
+  ongkirCityItemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 8,
+  },
+  ongkirCityItemCardActive: {
+    borderColor: '#0284c7',
+    backgroundColor: '#f0f9ff',
+  },
+  ongkirCityItemTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  ongkirCityItemBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#dcfce7',
+  },
+  ongkirCityItemBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803d',
+  },
+  ongkirCityItemDetail: {
+    fontSize: 11.5,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  infoSectionCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 8,
+  },
+  infoSectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4,
   },
 
   // Step 3 Review Bottom Actions

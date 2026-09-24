@@ -45,6 +45,8 @@ type DraftDetail = {
   lebar: string;
   qty: string;
   harga: string;
+  nomor_kalkulasi?: string;
+  is_include_ppn?: boolean;
 };
 
 type PenawaranDraftPayload = {
@@ -186,6 +188,8 @@ const buildEmptyDetail = (): DraftDetail => ({
   lebar: '',
   qty: '',
   harga: '',
+  nomor_kalkulasi: '',
+  is_include_ppn: false,
 });
 
 export default function PenawaranCreateScreen({ navigation, route }: any) {
@@ -278,6 +282,10 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
     String(draftFromRoute?.keterangan || ''),
   );
   const [note, setNote] = useState(String(draftFromRoute?.note || ''));
+  const [statusHarga, setStatusHarga] = useState<number>(() => {
+    const raw = (draftFromRoute as any)?.status_harga;
+    return raw !== undefined && raw !== null ? Number(raw) || 0 : 0;
+  });
 
   const [isCustomerLockedByPermintaan, setIsCustomerLockedByPermintaan] =
     useState(false);
@@ -499,6 +507,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
           search: String(keyword || '').trim(),
           sales_kode: effectiveSalesKode,
           customer_kode: customerKode.trim() || undefined,
+          status: 'DONE',
           limit: 20,
           page: 1,
         },
@@ -507,7 +516,9 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
 
       const filteredOptions = (result.options || []).filter(opt => {
         const nomor = toUpper(String(opt?.nomor || '').trim());
-        return nomor ? !selectedPermintaanNomorSet.has(nomor) : false;
+        const status = toUpper(String(opt?.status || '').trim());
+        const isDone = !status || status === 'DONE';
+        return nomor && isDone ? !selectedPermintaanNomorSet.has(nomor) : false;
       });
 
       setPermintaanOptionsByRow(prev => ({
@@ -537,6 +548,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
           nomor,
           sales_kode: effectiveSalesKode,
           customer_kode: customerKode.trim() || undefined,
+          status: 'DONE',
           limit: 1,
           page: 1,
         },
@@ -548,7 +560,19 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
         throw new Error('Detail no. permintaan tidak ditemukan');
       }
 
+      const selectedStatus = toUpper(String(selected?.status || '').trim());
+      if (selectedStatus && selectedStatus !== 'DONE') {
+        throw new Error(
+          `Hanya permintaan harga berstatus DONE yang dapat diproses (Status saat ini: ${selectedStatus})`,
+        );
+      }
+
       const af = selected.autofill;
+      const isIncPpn =
+        af.is_include_ppn !== undefined
+          ? Boolean(af.is_include_ppn)
+          : /inc\s*ppn|incppn/i.test(af.ket_kalkulasi || '');
+
       updateDetail(index, {
         no_permintaan: toUpper(String(af.no_permintaan || nomor)),
         nama_barang: toUpper(String(af.nama_barang || '')),
@@ -568,7 +592,14 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
           af.harga_referensi !== undefined && af.harga_referensi !== null
             ? formatThousandsId(String(af.harga_referensi))
             : '',
+        nomor_kalkulasi: af.nomor_kalkulasi || '',
+        is_include_ppn: isIncPpn,
       });
+
+      // Otomatis sinkronkan status PPN penawaran jika terdeteksi Include PPN dari kalkulasi permintaan
+      if (isIncPpn) {
+        setStatusHarga(1);
+      }
 
       const pickedCustomerKode = toUpper(
         String(selected.customer_kode || '').trim(),
@@ -817,6 +848,7 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
         sales_kode: salesKode.trim().toUpperCase(),
         keterangan: keterangan.trim(),
         note: note.trim(),
+        status_harga: statusHarga,
         user: user?.kode || user?.nama || 'MOBILE',
         client_request_id: submitTraceId,
         details: filtered,
@@ -1088,120 +1120,21 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
           {!!perusahaanKode && (
             <Text style={styles.helper}>Kode: {perusahaanKode}</Text>
           )}
-
-          <Text style={styles.label}>Tanda Tangan</Text>
-          <TextInput
-            value={ttd}
-            onChangeText={setTtd}
-            style={styles.input}
-            placeholder="Tanda Tangan"
-            placeholderTextColor={THEME.muted}
-          />
-          <Text style={styles.label}>Jabatan Tanda Tangan</Text>
-          <TextInput
-            value={ttdJabatan}
-            onChangeText={setTtdJabatan}
-            editable
-            style={styles.input}
-            placeholder="Jabatan Tanda Tangan"
-            placeholderTextColor={THEME.muted}
-          />
-
-          <Text style={styles.label}>Up</Text>
-          <TextInput
-            value={up}
-            onChangeText={setUp}
-            style={styles.input}
-            placeholder="Up"
-            placeholderTextColor={THEME.muted}
-          />
-
-          <Text style={styles.label}>Divisi Tujuan</Text>
-          {!isCustomerLockedByPermintaan ? (
-            <Text style={styles.helperInfoText}>
-              "Divisi Tujuan" terisi otomatis dari No. Permintaan yang dipilih.
-            </Text>
-          ) : (
-            <Text style={styles.helperLockedText}>
-              "Divisi Tujuan" terkunci berdasarkan No. Permintaan
-            </Text>
-          )}
-          <View style={styles.row}>
-            <View style={[styles.inputWrap, { flex: 1, marginBottom: 0 }]}>
-              <TextInput
-                value={divisiDisplayLabel}
-                onChangeText={t => {
-                  if (isCustomerLockedByPermintaan) {
-                    handleBlockedCustomerChange();
-                    return;
-                  }
-                  setDivisi(toUpper(t));
-                }}
-                placeholder="..."
-                placeholderTextColor={THEME.muted}
-                style={styles.input}
-                editable={false}
-              />
-            </View>
-          </View>
-
-          <Text style={styles.label}>Customer</Text>
-          {!isCustomerLockedByPermintaan ? (
-            <Text style={styles.helperInfoText}>
-              "Customer" terisi otomatis dari No. Permintaan yang dipilih.
-            </Text>
-          ) : (
-            <Text style={styles.helperLockedText}>
-              "Customer" terkunci berdasarkan No. Permintaan
-            </Text>
-          )}
-          <View style={styles.row}>
-            <View style={[styles.inputWrap, { flex: 1, marginBottom: 0 }]}>
-              <TextInput
-                value={customer}
-                onChangeText={t => {
-                  if (isCustomerLockedByPermintaan) {
-                    handleBlockedCustomerChange();
-                    return;
-                  }
-                  setCustomer(toUpper(t));
-                  if (customerKode) setCustomerKode('');
-                }}
-                placeholder="..."
-                placeholderTextColor={THEME.muted}
-                style={styles.input}
-                editable={false}
-              />
-            </View>
-          </View>
-          <Text style={styles.label}>Keterangan</Text>
-          <TextInput
-            value={keterangan}
-            onChangeText={t => setKeterangan(t)}
-            style={styles.input}
-            placeholder="Keterangan"
-            placeholderTextColor={THEME.muted}
-          />
-
-          <Text style={styles.label}>Note</Text>
-          <TextInput
-            value={note}
-            onChangeText={t => setNote(t)}
-            style={[styles.input, styles.noteInput]}
-            placeholder="Note"
-            placeholderTextColor={THEME.muted}
-            multiline
-            textAlignVertical="top"
-          />
         </View>
 
+        {/* CARD 2: PENGISIAN DETAIL ITEM & PERMINTAAN HARGA (DI ATAS) */}
         <View style={styles.card}>
           <View style={styles.rowBetween}>
-            <Text style={styles.cardTitle}>Detail Item</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Detail Item & Permintaan Harga</Text>
+              <Text style={styles.helperInfoText}>
+                Pilih No. Permintaan untuk mengisi otomatis data barang, customer, divisi, dan status PPN.
+              </Text>
+            </View>
           </View>
           <View style={styles.addBtnWrap}>
             <TouchableOpacity style={styles.addBtn} onPress={addRow}>
-              <Text style={styles.addBtnText}>+ Tambah</Text>
+              <Text style={styles.addBtnText}>+ Tambah Baris</Text>
             </TouchableOpacity>
           </View>
 
@@ -1294,6 +1227,43 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                   <Text style={styles.removeText}>
                     {permintaanErrorByRow[index]}
                   </Text>
+                )}
+
+                {/* Badge Referensi Kalkulasi & Status PPN */}
+                {(!!item.nomor_kalkulasi || item.is_include_ppn !== undefined) && (
+                  <View style={styles.kalkulasiBadgeRow}>
+                    {!!item.nomor_kalkulasi && (
+                      <View style={styles.kalkulasiBadge}>
+                        <MaterialIcons
+                          name="calculate"
+                          size={14}
+                          color="#0284c7"
+                        />
+                        <Text style={styles.kalkulasiBadgeText}>
+                          Ref Kalkulasi: {item.nomor_kalkulasi}
+                        </Text>
+                      </View>
+                    )}
+                    <View
+                      style={[
+                        styles.ppnStatusPill,
+                        item.is_include_ppn
+                          ? styles.ppnStatusPillInc
+                          : styles.ppnStatusPillExc,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.ppnStatusPillText,
+                          item.is_include_ppn
+                            ? styles.ppnStatusPillTextInc
+                            : styles.ppnStatusPillTextExc,
+                        ]}
+                      >
+                        {item.is_include_ppn ? 'INC PPN' : 'EXC PPN'}
+                      </Text>
+                    </View>
+                  </View>
                 )}
 
                 <Text style={styles.detailFieldLabel}>Nama Barang</Text>
@@ -1430,11 +1400,270 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
               </View>
             )}
           />
+        </View>
 
-          <Text style={styles.totalText}>
-            Total Estimasi:{' '}
-            {new Intl.NumberFormat('id-ID').format(totalNominal)}
+        {/* CARD 3: KETERANGAN LANJUTAN & PENUTUP (DI BAWAH) */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Keterangan Lanjutan</Text>
+
+          <Text style={styles.label}>Customer</Text>
+          {!isCustomerLockedByPermintaan ? (
+            <Text style={styles.helperInfoText}>
+              "Customer" terisi otomatis dari No. Permintaan yang dipilih.
+            </Text>
+          ) : (
+            <Text style={styles.helperLockedText}>
+              "Customer" terkunci berdasarkan No. Permintaan
+            </Text>
+          )}
+          <View style={styles.row}>
+            <View style={[styles.inputWrap, { flex: 1, marginBottom: 0 }]}>
+              <TextInput
+                value={customer}
+                onChangeText={t => {
+                  if (isCustomerLockedByPermintaan) {
+                    handleBlockedCustomerChange();
+                    return;
+                  }
+                  setCustomer(toUpper(t));
+                  if (customerKode) setCustomerKode('');
+                }}
+                placeholder="..."
+                placeholderTextColor={THEME.muted}
+                style={styles.input}
+                editable={false}
+              />
+            </View>
+          </View>
+
+          <Text style={styles.label}>Divisi Tujuan</Text>
+          {!isCustomerLockedByPermintaan ? (
+            <Text style={styles.helperInfoText}>
+              "Divisi Tujuan" terisi otomatis dari No. Permintaan yang dipilih.
+            </Text>
+          ) : (
+            <Text style={styles.helperLockedText}>
+              "Divisi Tujuan" terkunci berdasarkan No. Permintaan
+            </Text>
+          )}
+          <View style={styles.row}>
+            <View style={[styles.inputWrap, { flex: 1, marginBottom: 0 }]}>
+              <TextInput
+                value={divisiDisplayLabel}
+                onChangeText={t => {
+                  if (isCustomerLockedByPermintaan) {
+                    handleBlockedCustomerChange();
+                    return;
+                  }
+                  setDivisi(toUpper(t));
+                }}
+                placeholder="..."
+                placeholderTextColor={THEME.muted}
+                style={styles.input}
+                editable={false}
+              />
+            </View>
+          </View>
+
+          {/* Pengaturan Status Pajak (PPN) */}
+          <Text style={[styles.label, { marginTop: 12 }]}>
+            Status Pajak (PPN)
           </Text>
+          <View style={styles.ppnSelectorWrap}>
+            <TouchableOpacity
+              style={[
+                styles.ppnOptionCard,
+                statusHarga === 1 && styles.ppnOptionCardActiveInc,
+              ]}
+              onPress={() => setStatusHarga(1)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.ppnOptionLeft}>
+                <MaterialIcons
+                  name={
+                    statusHarga === 1
+                      ? 'radio-button-checked'
+                      : 'radio-button-unchecked'
+                  }
+                  size={20}
+                  color={statusHarga === 1 ? '#16a34a' : '#94a3b8'}
+                />
+                <View style={{ marginLeft: 8, flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.ppnOptionTitle,
+                      statusHarga === 1 && {
+                        color: '#15803d',
+                        fontWeight: '700',
+                      },
+                    ]}
+                  >
+                    Include PPN (11%)
+                  </Text>
+                  <Text style={styles.ppnOptionSub}>
+                    Harga penawaran sudah termasuk PPN
+                  </Text>
+                </View>
+              </View>
+              <View
+                style={[
+                  styles.ppnBadge,
+                  statusHarga === 1
+                    ? styles.ppnBadgeInc
+                    : styles.ppnBadgeInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.ppnBadgeText,
+                    statusHarga === 1
+                      ? styles.ppnBadgeTextInc
+                      : styles.ppnBadgeTextInactive,
+                  ]}
+                >
+                  INC PPN
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.ppnOptionCard,
+                statusHarga === 0 && styles.ppnOptionCardActiveExc,
+                { marginTop: 8 },
+              ]}
+              onPress={() => setStatusHarga(0)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.ppnOptionLeft}>
+                <MaterialIcons
+                  name={
+                    statusHarga === 0
+                      ? 'radio-button-checked'
+                      : 'radio-button-unchecked'
+                  }
+                  size={20}
+                  color={statusHarga === 0 ? '#0284c7' : '#94a3b8'}
+                />
+                <View style={{ marginLeft: 8, flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.ppnOptionTitle,
+                      statusHarga === 0 && {
+                        color: '#0369a1',
+                        fontWeight: '700',
+                      },
+                    ]}
+                  >
+                    Exclude PPN
+                  </Text>
+                  <Text style={styles.ppnOptionSub}>
+                    Harga penawaran belum termasuk PPN
+                  </Text>
+                </View>
+              </View>
+              <View
+                style={[
+                  styles.ppnBadge,
+                  statusHarga === 0
+                    ? styles.ppnBadgeExc
+                    : styles.ppnBadgeInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.ppnBadgeText,
+                    statusHarga === 0
+                      ? styles.ppnBadgeTextExc
+                      : styles.ppnBadgeTextInactive,
+                  ]}
+                >
+                  EXC PPN
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.ppnNoteHint}>
+            {statusHarga === 1
+              ? '💡 Pada PDF Penawaran tercantum: "* Note : Harga sudah termasuk PPN"'
+              : '💡 Pada PDF Penawaran tercantum: "* Note : Harga belum termasuk PPN"'}
+          </Text>
+
+          <Text style={[styles.label, { marginTop: 12 }]}>Up</Text>
+          <TextInput
+            value={up}
+            onChangeText={setUp}
+            style={styles.input}
+            placeholder="Up (contoh: Bpk. Bambang)"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>Keterangan</Text>
+          <TextInput
+            value={keterangan}
+            onChangeText={t => setKeterangan(t)}
+            style={styles.input}
+            placeholder="Keterangan"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>Note</Text>
+          <TextInput
+            value={note}
+            onChangeText={t => setNote(t)}
+            style={[styles.input, styles.noteInput]}
+            placeholder="Note"
+            placeholderTextColor={THEME.muted}
+            multiline
+            textAlignVertical="top"
+          />
+
+          <Text style={styles.label}>Tanda Tangan</Text>
+          <TextInput
+            value={ttd}
+            onChangeText={setTtd}
+            style={styles.input}
+            placeholder="Tanda Tangan"
+            placeholderTextColor={THEME.muted}
+          />
+
+          <Text style={styles.label}>Jabatan Tanda Tangan</Text>
+          <TextInput
+            value={ttdJabatan}
+            onChangeText={setTtdJabatan}
+            editable
+            style={styles.input}
+            placeholder="Jabatan Tanda Tangan"
+            placeholderTextColor={THEME.muted}
+          />
+        </View>
+
+        {/* CARD 4: RINGKASAN TOTAL & SUBMIT */}
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.totalCardLabel}>Total Estimasi:</Text>
+            <Text style={styles.totalText}>
+              Rp {new Intl.NumberFormat('id-ID').format(totalNominal)}
+            </Text>
+          </View>
+
+          <View style={styles.totalStatusWrap}>
+            <MaterialIcons
+              name={statusHarga === 1 ? 'check-circle' : 'info'}
+              size={15}
+              color={statusHarga === 1 ? '#16a34a' : '#0284c7'}
+            />
+            <Text
+              style={[
+                styles.totalStatusText,
+                { color: statusHarga === 1 ? '#15803d' : '#0369a1' },
+              ]}
+            >
+              {statusHarga === 1
+                ? 'Status Penawaran: Harga Sudah Termasuk PPN (INC PPN)'
+                : 'Status Penawaran: Harga Belum Termasuk PPN (EXC PPN)'}
+            </Text>
+          </View>
 
           <TouchableOpacity
             style={[styles.saveBtn, styles.saveBtnInCard]}
@@ -1612,9 +1841,99 @@ export default function PenawaranCreateScreen({ navigation, route }: any) {
                             handleApplyPermintaan(rowIndex, picked);
                           }}
                         >
-                          <Text style={styles.searchResultNomor}>
-                            {opt.nomor || '-'}
-                          </Text>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              marginBottom: 2,
+                            }}
+                          >
+                            <Text style={styles.searchResultNomor}>
+                              {opt.nomor || '-'}
+                            </Text>
+                            <View
+                              style={{
+                                backgroundColor: '#dcfce7',
+                                borderColor: '#86efac',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                paddingHorizontal: 6,
+                                paddingVertical: 1,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color: '#15803d',
+                                  fontSize: 10,
+                                  fontWeight: '800',
+                                }}
+                              >
+                                DONE
+                              </Text>
+                            </View>
+                          </View>
+                          {(!!opt.nomor_kalkulasi || opt.is_include_ppn !== undefined) && (
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                flexWrap: 'wrap',
+                                gap: 6,
+                                marginTop: 2,
+                                marginBottom: 4,
+                              }}
+                            >
+                              {!!opt.nomor_kalkulasi && (
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    backgroundColor: '#e0f2fe',
+                                    borderRadius: 4,
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 2,
+                                    gap: 3,
+                                  }}
+                                >
+                                  <MaterialIcons
+                                    name="calculate"
+                                    size={12}
+                                    color="#0284c7"
+                                  />
+                                  <Text
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: '700',
+                                      color: '#0369a1',
+                                    }}
+                                  >
+                                    Kalkulasi: {opt.nomor_kalkulasi}
+                                  </Text>
+                                </View>
+                              )}
+                              <View
+                                style={{
+                                  backgroundColor: opt.is_include_ppn ? '#dcfce7' : '#f1f5f9',
+                                  borderRadius: 4,
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderWidth: 1,
+                                  borderColor: opt.is_include_ppn ? '#86efac' : '#cbd5e1',
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: '700',
+                                    color: opt.is_include_ppn ? '#15803d' : '#64748b',
+                                  }}
+                                >
+                                  {opt.is_include_ppn ? 'INC PPN' : 'EXC PPN'}
+                                </Text>
+                              </View>
+                            </View>
+                          )}
                           <Text style={styles.searchResultMeta}>
                             Nama Pekerjaan: {opt.nama_barang || '-'}
                           </Text>
@@ -2230,5 +2549,146 @@ const styles = StyleSheet.create({
   clearConfirmTextSubmit: {
     color: '#fff',
     fontWeight: '900',
+  },
+  kalkulasiBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  kalkulasiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#e0f2fe',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  kalkulasiBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  ppnStatusPill: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+  },
+  ppnStatusPillInc: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#86efac',
+  },
+  ppnStatusPillExc: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#cbd5e1',
+  },
+  ppnStatusPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  ppnStatusPillTextInc: {
+    color: '#15803d',
+  },
+  ppnStatusPillTextExc: {
+    color: '#64748b',
+  },
+  ppnSelectorWrap: {
+    marginTop: 4,
+  },
+  ppnOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    backgroundColor: '#fff',
+  },
+  ppnOptionCardActiveInc: {
+    borderColor: '#86efac',
+    backgroundColor: '#f0fdf4',
+  },
+  ppnOptionCardActiveExc: {
+    borderColor: '#7dd3fc',
+    backgroundColor: '#f0f9ff',
+  },
+  ppnOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  ppnOptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  ppnOptionSub: {
+    fontSize: 11,
+    color: THEME.muted,
+    marginTop: 1,
+  },
+  ppnBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  ppnBadgeInc: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#86efac',
+  },
+  ppnBadgeExc: {
+    backgroundColor: '#e0f2fe',
+    borderColor: '#bae6fd',
+  },
+  ppnBadgeInactive: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+  },
+  ppnBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  ppnBadgeTextInc: {
+    color: '#15803d',
+  },
+  ppnBadgeTextExc: {
+    color: '#0369a1',
+  },
+  ppnBadgeTextInactive: {
+    color: '#94a3b8',
+  },
+  ppnNoteHint: {
+    marginTop: 6,
+    fontSize: 11,
+    fontStyle: 'italic',
+    color: THEME.muted,
+    lineHeight: 16,
+  },
+  totalCardLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: THEME.ink,
+  },
+  totalStatusWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: THEME.line,
+  },
+  totalStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

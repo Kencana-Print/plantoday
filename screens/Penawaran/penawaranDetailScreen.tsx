@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   PermissionsAndroid,
   Platform,
   StatusBar,
@@ -19,15 +20,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import RNFS from 'react-native-fs';
 import * as RNHTMLtoPDF from 'react-native-html-to-pdf';
+import { WebView } from 'react-native-webview';
 import {
+  approvePenawaran,
   getPenawaranActivityLogs,
   getPenawaranDetail,
   PenawaranActivityLog,
   PenawaranDetailItem,
   PenawaranHeader,
 } from '../../services/penawaranApi';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import ModalConfirm from 'react-native-modal';
 import { useAuth } from '../../context/authContext';
-import PenawaranApprovalModal from './penawaranApprovalModal';
 import {
   PENAWARAN_SHADOW,
   PENAWARAN_STATUS_COLORS,
@@ -270,8 +274,17 @@ const InfoRow = ({
 
 export default function PenawaranDetailScreen({ navigation, route }: any) {
   const nomor = String(route?.params?.nomor || '');
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const insets = useSafeAreaInsets();
+  const isManager = useMemo(
+    () =>
+      String(user?.jabatan || '')
+        .trim()
+        .toUpperCase()
+        .split(/[\s/_-]+/)
+        .includes('MANAGER'),
+    [user?.jabatan],
+  );
   const pdfHeaderAssetConfig = useMemo(
     () => ({
       KENCANA_PRINT: {
@@ -324,8 +337,12 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
   const [header, setHeader] = useState<PenawaranHeader | null>(null);
   const [details, setDetails] = useState<PenawaranDetailItem[]>([]);
   const [activityLogs, setActivityLogs] = useState<PenawaranActivityLog[]>([]);
-  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [unapprovedModalVisible, setUnapprovedModalVisible] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string>('');
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [submittingApproval, setSubmittingApproval] = useState(false);
 
   const loadDetail = useCallback(async () => {
     if (!nomor) {
@@ -447,8 +464,13 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
     return found || '';
   }, [header]);
 
-  const approvalState = normalizeApprovalState(header?.approval_state);
-  const isWaitingApproval = approvalState === 'WAIT';
+  const isSigned = useMemo(
+    () =>
+      String(header?.digital_sign || '')
+        .trim()
+        .toUpperCase() === 'Y',
+    [header?.digital_sign],
+  );
 
   const resolvePdfTemplateKey = useCallback((companyName?: string) => {
     const normalized = String(companyName || '')
@@ -472,6 +494,46 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
 
     return 'KENCANA_PRINT' as PdfTemplateKey;
   }, []);
+
+  const taxNoteText = useMemo(() => {
+    if (!header) return '';
+
+    // Prioritas 1: Baca langsung dari header.status_harga asli dari database pen_status_harga
+    // 0 = Belum PPN, 1 = Sudah PPN, 2 = Disembunyikan / Tanpa PPN
+    const rawStatusHarga = header.status_harga;
+    if (rawStatusHarga !== undefined && rawStatusHarga !== null) {
+      const statusHargaNum = Number(rawStatusHarga);
+      if (statusHargaNum === 1) {
+        return '* Note : Harga sudah termasuk PPN';
+      }
+      if (statusHargaNum === 0) {
+        return '* Note : Harga belum termasuk PPN';
+      }
+      if (statusHargaNum === 2) {
+        return '';
+      }
+    }
+
+    // Prioritas 2: Baca jika ada catatan khusus di header note/keterangan asli penawaran
+    const textToCheck = `${header.note || ''} ${header.keterangan || ''}`.toUpperCase();
+    if (
+      textToCheck.includes('SUDAH TERMASUK PPN') ||
+      textToCheck.includes('INC PPN') ||
+      textToCheck.includes('INCLUDE PPN')
+    ) {
+      return '* Note : Harga sudah termasuk PPN';
+    }
+    if (
+      textToCheck.includes('BELUM TERMASUK PPN') ||
+      textToCheck.includes('EXC PPN') ||
+      textToCheck.includes('EXCLUDE PPN')
+    ) {
+      return '* Note : Harga belum termasuk PPN';
+    }
+
+    // Tanpa PPN / tidak ada info PPN: jangan tampilkan catatan PPN
+    return '';
+  }, [header]);
 
   const resolvePdfImageSrc = useCallback(
     async (
@@ -982,7 +1044,11 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
               </tbody>
             </table>
 
-            <div class="note-tax">* Note : Harga sudah termasuk PPn 11%</div>
+            ${
+              taxNoteText
+                ? `<div class="note-tax">${escapeHtml(taxNoteText)}</div>`
+                : ''
+            }
 
             <div class="closing">
               Demikian penawaran ini kami ajukan, apabila ada informasi yang perlu diketahui mengenai
@@ -1016,7 +1082,7 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
       </html>
     `;
     },
-    [details, header, nomor],
+    [details, header, nomor, taxNoteText],
   );
 
   const buildJayaAbadiPdfHtml = useCallback(
@@ -1151,7 +1217,11 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
             </tbody>
           </table>
 
-          <div class="note-tax">* Note : Harga belum termasuk PPn 11%</div>
+          ${
+            taxNoteText
+              ? `<div class="note-tax">${escapeHtml(taxNoteText)}</div>`
+              : ''
+          }
           <div class="closing">Keterangan lebih lanjut bisa menghubungi marketing kami di nomor atau (0271) 722998.<br/><br/>Demikian Surat Penawaran ini kami sampaikan, kabar baik dari Bapak/Ibu sangat kami nantikan. Atas perhatian dan kerja samanya kami ucapkan terima kasih.</div>
           <div class="note-title">Note :</div>
           <div class="note-box">${escapeHtml(note)}</div>
@@ -1185,7 +1255,7 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
       </html>
     `;
     },
-    [details, header, nomor],
+    [details, header, nomor, taxNoteText],
   );
 
   const buildMadaniPdfHtml = useCallback(
@@ -1336,7 +1406,11 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
             </tbody>
           </table>
 
-          <div class="note-tax">* Note : Harga belum termasuk PPN 11%</div>
+          ${
+            taxNoteText
+              ? `<div class="note-tax">${escapeHtml(taxNoteText)}</div>`
+              : ''
+          }
           <div class="closing">Demikian penawaran ini kami ajukan. Atas perhatian dan kerja samanya kami ucapkan terima kasih.</div>
           <div class="note-title">Note :</div>
           <div class="note-box">${escapeHtml(note)}</div>
@@ -1363,7 +1437,7 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
       </html>
     `;
     },
-    [details, header, nomor],
+    [details, header, nomor, taxNoteText],
   );
 
   const buildPdfHtml = useCallback(
@@ -1409,6 +1483,11 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
 
   const handleExportPdf = useCallback(async () => {
     if (!header) return;
+
+    if (!isSigned) {
+      setUnapprovedModalVisible(true);
+      return;
+    }
 
     setExportingPdf(true);
     try {
@@ -1696,11 +1775,86 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
   }, [
     buildPdfHtml,
     header,
+    isSigned,
     nomor,
     pdfDigitalSignAssetConfig,
     pdfHeaderAssetConfig,
     resolvePdfImageSrc,
   ]);
+
+  const handleOpenApprovalModal = useCallback(async () => {
+    if (!header) return;
+    setLoadingPreview(true);
+    setApprovalModalVisible(true);
+
+    try {
+      const [kencanaHeaderResolved, jayaHeaderResolved, madaniHeaderResolved] =
+        await Promise.all([
+          resolvePdfImageSrc(pdfHeaderAssetConfig.KENCANA_PRINT),
+          resolvePdfImageSrc(pdfHeaderAssetConfig.JAYA_ABADI_MULIA),
+          resolvePdfImageSrc(pdfHeaderAssetConfig.MADANI_PRODUCTION),
+        ]);
+
+      const [kencanaSignResolved, jayaSignResolved, madaniSignResolved] =
+        await Promise.all([
+          resolvePdfImageSrc(pdfDigitalSignAssetConfig.KENCANA_PRINT),
+          resolvePdfImageSrc(pdfDigitalSignAssetConfig.JAYA_ABADI_MULIA),
+          resolvePdfImageSrc(pdfDigitalSignAssetConfig.MADANI_PRODUCTION),
+        ]);
+
+      const html = buildPdfHtml(
+        {
+          KENCANA_PRINT: kencanaHeaderResolved.src,
+          JAYA_ABADI_MULIA: jayaHeaderResolved.src,
+          MADANI_PRODUCTION: madaniHeaderResolved.src,
+        },
+        {
+          KENCANA_PRINT: kencanaSignResolved.src,
+          JAYA_ABADI_MULIA: jayaSignResolved.src,
+          MADANI_PRODUCTION: madaniSignResolved.src,
+        },
+      );
+
+      setPreviewHtml(html);
+    } catch (err) {
+      console.error('[ApprovalPreview] Error generating html:', err);
+    } finally {
+      setLoadingPreview(false);
+    }
+  }, [
+    buildPdfHtml,
+    header,
+    pdfDigitalSignAssetConfig,
+    pdfHeaderAssetConfig,
+    resolvePdfImageSrc,
+  ]);
+
+  const handleSubmitApproval = useCallback(async () => {
+    if (!nomor) return;
+    try {
+      setSubmittingApproval(true);
+      await approvePenawaran(nomor, token);
+      Toast.show({
+        type: 'glassSuccess',
+        text1: 'Berhasil Diapprove',
+        text2: 'Penawaran berhasil diapprove dan ditandatangani',
+      });
+      setApprovalModalVisible(false);
+      await loadDetail();
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Gagal meng-approve penawaran';
+      Toast.show({
+        type: 'glassError',
+        text1: 'Gagal Approve',
+        text2: msg,
+      });
+    } finally {
+      setSubmittingApproval(false);
+    }
+  }, [loadDetail, nomor, token]);
 
   return (
     <LinearGradient
@@ -1746,7 +1900,7 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
           keyExtractor={(item, idx) => `${item.id}-${idx}`}
           contentContainerStyle={[
             styles.listContainer,
-            { paddingBottom: 120 + insets.bottom },
+            { paddingBottom: 85 + insets.bottom },
           ]}
           ListHeaderComponent={
             <View style={styles.sectionCard}>
@@ -1761,6 +1915,14 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
               <InfoRow label="Tipe" value={header.tipe} />
               <InfoRow label="UP" value={header.up} />
               <InfoRow label="TTD" value={header.ttd} />
+              <InfoRow
+                label="Status PPN"
+                value={
+                  Number(header.status_harga) === 1
+                    ? 'Sudah Termasuk PPN (INC PPN)'
+                    : 'Belum Termasuk PPN (EXC PPN)'
+                }
+              />
               <View style={styles.noteBlock}>
                 <Text style={styles.noteLabel}>Note</Text>
                 <Text style={styles.noteText}>{header.note || '-'}</Text>
@@ -1856,12 +2018,38 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
         />
       )}
 
-      <PenawaranApprovalModal
-        visible={approvalModalVisible}
-        nomor={nomor}
-        onClose={() => setApprovalModalVisible(false)}
-        onSuccess={() => loadDetail()}
-      />
+      <ModalConfirm
+        isVisible={unapprovedModalVisible}
+        onBackdropPress={() => setUnapprovedModalVisible(false)}
+        backdropOpacity={0.45}
+        animationIn="zoomIn"
+        animationOut="zoomOut"
+      >
+        <View style={styles.confirmModalCard}>
+          <View style={styles.confirmModalIndicator} />
+
+          <View style={styles.unapprovedIconWrap}>
+            <MaterialIcons name="lock-clock" size={32} color="#d97706" />
+          </View>
+
+          <Text style={styles.confirmModalTitle}>Penawaran Belum Diapprove</Text>
+
+          <Text style={styles.confirmModalSubtitle}>
+            Dokumen penawaran ini belum ditandatangani atau belum diapprove oleh
+            manager, sehingga belum dapat dieksport ke PDF.
+          </Text>
+
+          <View style={styles.confirmModalActionRow}>
+            <TouchableOpacity
+              style={styles.confirmBtnSubmit}
+              onPress={() => setUnapprovedModalVisible(false)}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.confirmTextSubmit}>Mengerti</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ModalConfirm>
 
       {!loading && header && (
         <View
@@ -1870,56 +2058,155 @@ export default function PenawaranDetailScreen({ navigation, route }: any) {
             { paddingBottom: Math.max(insets.bottom, 12) },
           ]}
         >
-          <TouchableOpacity
-            style={[
-              styles.actionBtn,
-              styles.actionBtnFull,
-              styles.actionBtnPrimary,
-              exportingPdf && styles.actionButtonDisabled,
-            ]}
-            onPress={handleExportPdf}
-            disabled={exportingPdf}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.bottomActionText}>
-              {exportingPdf ? 'Export PDF...' : 'Eksport PDF'}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.actionRow}>
+          <View style={styles.bottomActionRow}>
             <TouchableOpacity
               style={[
                 styles.actionBtn,
-                styles.actionBtnSoft,
-                isWaitingApproval && styles.actionButtonDisabled,
+                isManager ? styles.actionBtnHalf : styles.actionBtnFull,
+                styles.actionBtnPrimary,
+                (!isSigned || exportingPdf) && styles.actionBtnDimmed,
               ]}
-              onPress={() =>
-                navigation.navigate('PenawaranStatus', { nomor: header.nomor })
-              }
-              disabled={isWaitingApproval}
-              activeOpacity={0.9}
+              onPress={handleExportPdf}
+              disabled={exportingPdf}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.bottomActionText, { color: THEME.primary }]}>
-                Ubah Status
+              <Text
+                style={[
+                  styles.bottomActionText,
+                  !isSigned && styles.bottomActionTextDimmed,
+                ]}
+              >
+                {exportingPdf ? 'Export PDF...' : 'Eksport PDF'}
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                styles.actionBtnSoft,
-                isWaitingApproval && styles.actionButtonDisabled,
-              ]}
-              onPress={() => setApprovalModalVisible(true)}
-              disabled={isWaitingApproval}
-              activeOpacity={0.9}
-            >
-              <Text style={[styles.bottomActionText, { color: THEME.primary }]}>
-                Ajukan Perubahan
-              </Text>
-            </TouchableOpacity>
+            {isManager &&
+              (isSigned ? (
+                <View
+                  style={[
+                    styles.actionBtn,
+                    styles.actionBtnHalf,
+                    styles.actionBtnApprovedBadge,
+                  ]}
+                >
+                  <MaterialIcons name="verified" size={16} color="#059669" />
+                  <Text style={styles.actionBtnApprovedText}>
+                    Sudah Diapprove
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[
+                    styles.actionBtn,
+                    styles.actionBtnHalf,
+                    styles.actionBtnApprove,
+                  ]}
+                  onPress={handleOpenApprovalModal}
+                  activeOpacity={0.85}
+                >
+                  <MaterialIcons name="done-all" size={16} color="#FFFFFF" />
+                  <Text style={styles.actionBtnApproveText}>Approve</Text>
+                </TouchableOpacity>
+              ))}
           </View>
         </View>
+      )}
+
+      {isManager && (
+        <Modal
+          visible={approvalModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => {
+            if (!submittingApproval) setApprovalModalVisible(false);
+          }}
+        >
+          <View style={styles.approvalModalOverlay}>
+            <View
+              style={[
+                styles.approvalModalContainer,
+                { paddingBottom: Math.max(insets.bottom, 16) },
+              ]}
+            >
+              <View style={styles.approvalModalHeader}>
+                <View style={styles.approvalModalHeaderInfo}>
+                  <Text style={styles.approvalModalTitle}>
+                    Preview & Konfirmasi Approval
+                  </Text>
+                  <Text style={styles.approvalModalSubtitle} numberOfLines={1}>
+                    {displayNomor} • {header?.customer || '-'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setApprovalModalVisible(false)}
+                  disabled={submittingApproval}
+                  style={styles.approvalModalCloseBtn}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons name="close" size={20} color={THEME.ink} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.previewContainer}>
+                {loadingPreview ? (
+                  <View style={styles.previewLoadingWrap}>
+                    <ActivityIndicator size="large" color={THEME.primary} />
+                    <Text style={styles.previewLoadingText}>
+                      Membuat preview dokumen...
+                    </Text>
+                  </View>
+                ) : previewHtml ? (
+                  <WebView
+                    originWhitelist={['*']}
+                    source={{ html: previewHtml }}
+                    style={styles.previewWebView}
+                    scalesPageToFit={true}
+                    nestedScrollEnabled={true}
+                  />
+                ) : (
+                  <View style={styles.previewLoadingWrap}>
+                    <Text style={styles.previewLoadingText}>
+                      Preview dokumen tidak tersedia
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.approvalModalFooter}>
+                <TouchableOpacity
+                  style={styles.approvalBtnCancel}
+                  onPress={() => setApprovalModalVisible(false)}
+                  disabled={submittingApproval}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.approvalBtnCancelText}>Batal</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.approvalBtnConfirm}
+                  onPress={handleSubmitApproval}
+                  disabled={submittingApproval || loadingPreview}
+                  activeOpacity={0.9}
+                >
+                  {submittingApproval ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <MaterialIcons
+                        name="check-circle"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.approvalBtnConfirmText}>
+                        Setujui & Approve
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       )}
     </LinearGradient>
   );
@@ -2140,43 +2427,236 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 10,
     paddingBottom: 10,
     backgroundColor: THEME.card,
     borderTopWidth: 1,
     borderTopColor: THEME.line,
-    gap: 8,
   },
-  actionRow: {
-    width: '100%',
+  bottomActionRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
   },
   actionBtn: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
   },
   actionBtnFull: {
     width: '100%',
-    flex: 0,
+  },
+  actionBtnHalf: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   actionBtnPrimary: {
     backgroundColor: THEME.primary,
     borderColor: 'rgba(79,70,229,0.18)',
   },
-  actionBtnSoft: {
-    backgroundColor: 'rgba(79,70,229,0.08)',
-    borderColor: 'rgba(79,70,229,0.18)',
+  actionBtnDimmed: {
+    backgroundColor: '#94A3B8',
+    borderColor: '#94A3B8',
+    opacity: 0.65,
+  },
+  actionBtnApprove: {
+    backgroundColor: '#059669',
+    borderColor: '#047857',
+  },
+  actionBtnApproveText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  actionBtnApprovedBadge: {
+    backgroundColor: 'rgba(5,150,105,0.12)',
+    borderColor: 'rgba(5,150,105,0.25)',
+  },
+  actionBtnApprovedText: {
+    color: '#059669',
+    fontWeight: '800',
+    fontSize: 12,
   },
   bottomActionText: {
     color: '#FFFFFF',
     fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 0.1,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  bottomActionTextDimmed: {
+    color: '#F8FAFC',
+    opacity: 0.9,
+  },
+  confirmModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.16)',
+    alignItems: 'center',
+  },
+  confirmModalIndicator: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(79,70,229,0.24)',
+    alignSelf: 'center',
+    marginBottom: 6,
+  },
+  unapprovedIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  confirmModalTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: THEME.ink,
+    textAlign: 'center',
+  },
+  confirmModalSubtitle: {
+    marginTop: 8,
+    textAlign: 'center',
+    color: THEME.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    paddingHorizontal: 4,
+  },
+  confirmModalActionRow: {
+    marginTop: 18,
+    width: '100%',
+  },
+  confirmBtnSubmit: {
+    width: '100%',
+    borderRadius: 12,
+    backgroundColor: THEME.primary,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmTextSubmit: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  approvalModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.65)',
+    justifyContent: 'flex-end',
+  },
+  approvalModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: '92%',
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  approvalModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.line,
+  },
+  approvalModalHeaderInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  approvalModalTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: THEME.ink,
+  },
+  approvalModalSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: THEME.muted,
+    marginTop: 2,
+  },
+  approvalModalCloseBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: THEME.soft,
+  },
+  previewContainer: {
+    flex: 1,
+    marginVertical: 12,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: THEME.line,
+    backgroundColor: '#F8FAFC',
+  },
+  previewLoadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  previewLoadingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: THEME.muted,
+  },
+  previewWebView: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  approvalModalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 6,
+  },
+  approvalBtnCancel: {
+    flex: 0.8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: THEME.soft,
+    borderWidth: 1,
+    borderColor: THEME.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approvalBtnCancelText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: THEME.muted,
+  },
+  approvalBtnConfirm: {
+    flex: 1.4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#059669',
+    borderWidth: 1,
+    borderColor: '#047857',
+  },
+  approvalBtnConfirmText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
   },
 });

@@ -48,6 +48,7 @@ export type PermintaanHargaDetail = {
   mh_finishing: string;
   mh_sublim?: string;
   mh_warna?: string;
+  mh_workshop?: string;
   mh_ket: string;
   mh_status: string;
   mh_harga_kalkulasi: number;
@@ -100,6 +101,8 @@ export type PermintaanHargaPayload = {
   garmen_warna?: string;
   garmen_tambahan?: any[];
   garmen_cetak?: any[];
+  mh_workshop?: string;
+  garmen_workshop?: string;
 };
 
 export type PermintaanHargaImageUpload = {
@@ -445,12 +448,45 @@ export interface MmtCalculatePayload {
   toppingKode?: string;
   toppingQty?: number;
   isNetto?: boolean;
+  selongsongVertical?: boolean;
+  selongsongHorizontal?: boolean;
 }
 
 export const getKalkulasiMasterOptions = async (token?: string | null) => {
   const response = await api.get('/permintaan-harga/kalkulasi/options', {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
+  return response.data?.data;
+};
+
+export interface OngkirCalculatePayload {
+  alokasi: string;
+  divisi: string;
+  panjang?: number;
+  lebar?: number;
+  qty: number;
+  sublim?: string;
+  customNominal?: number;
+}
+
+export const getOngkirOptionsApi = async (token?: string | null) => {
+  const response = await api.get('/permintaan-harga/kalkulasi/ongkir/options', {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  return response.data?.data;
+};
+
+export const calculateOngkirApi = async (
+  payload: OngkirCalculatePayload,
+  token?: string | null,
+) => {
+  const response = await api.post(
+    '/permintaan-harga/kalkulasi/ongkir/calculate',
+    payload,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
   return response.data?.data;
 };
 
