@@ -67,8 +67,30 @@ export const hitungOngkirOtomatis = ({
   const numQty = Number(qty) || 0;
   const normDivisi = String(divisi || '1').trim();
 
-  // Mode Custom
-  if (isCustom || String(alokasi).toLowerCase() === 'custom') {
+  // Mode Tanpa Ongkir (Opsional / Default Rp 0)
+  if (
+    !alokasi ||
+    String(alokasi).toLowerCase() === 'tanpa ongkir' ||
+    String(alokasi).toLowerCase() === 'none' ||
+    String(alokasi).trim() === ''
+  ) {
+    return {
+      alokasi: 'Tanpa Ongkir',
+      isCustom: false,
+      totalBeratKg: 0,
+      beratDihitungKg: 0,
+      minKg: 0,
+      tarifPerKg: 0,
+      isFreeCharge: true,
+      freeThreshold: 0,
+      totalOngkir: 0,
+      ongkirPerPcs: 0,
+      ringkasan: 'Tanpa Ongkir (Rp 0)',
+    };
+  }
+
+  // Mode Custom / Manual
+  if (isCustom || String(alokasi).toLowerCase() === 'custom' || String(alokasi).toLowerCase() === 'manual') {
     const totalOngkir = Number(customNominal) || 0;
     const ongkirPerPcs = numQty > 0 ? Math.round(totalOngkir / numQty) : totalOngkir;
     return {
@@ -78,11 +100,11 @@ export const hitungOngkirOtomatis = ({
       beratDihitungKg: 0,
       minKg: 0,
       tarifPerKg: 0,
-      isFreeCharge: false,
+      isFreeCharge: totalOngkir === 0,
       freeThreshold: 0,
       totalOngkir,
       ongkirPerPcs,
-      ringkasan: totalOngkir > 0 ? `Custom: Rp ${totalOngkir.toLocaleString('id-ID')}` : 'Rp 0',
+      ringkasan: totalOngkir > 0 ? `Manual: Rp ${totalOngkir.toLocaleString('id-ID')}` : 'Rp 0',
     };
   }
 

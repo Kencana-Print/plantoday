@@ -578,9 +578,13 @@ export const getTambahanOptionsApi = async (
   return response.data?.data || [];
 };
 
-export const getCetakOptionsApi = async (token?: string | null) => {
+export const getCetakOptionsApi = async (
+  token?: string | null,
+  params?: { jenisKain?: string; kategori?: string },
+) => {
   const response = await api.get('/lookups/cetak', {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    params,
   });
   return response.data?.data || [];
 };

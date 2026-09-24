@@ -293,13 +293,16 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [mh_ongkir, setMhOngkir] = useState(
     initial?.mh_ongkir ? String(initial.mh_ongkir) : '',
   );
-  const [alokasiOngkir, setAlokasiOngkir] = useState<string>(
-    String(initial?.mh_ongkir_alokasi || 'Jakarta'),
-  );
+  const [alokasiOngkir, setAlokasiOngkir] = useState<string>(() => {
+    if (initial?.mh_ongkir_alokasi) return String(initial.mh_ongkir_alokasi);
+    if (initial?.mh_ongkir && Number(initial.mh_ongkir) > 0) return 'Custom';
+    return 'Tanpa Ongkir';
+  });
   const [isCustomOngkir, setIsCustomOngkir] = useState<boolean>(
     Boolean(
       initial?.mh_ongkir_is_custom ||
         (initial?.mh_ongkir &&
+          Number(initial.mh_ongkir) > 0 &&
           !FALLBACK_ONGKIR_OPTIONS.some(
             o =>
               o.alokasi.toLowerCase() ===
@@ -471,6 +474,35 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
           return nextPpn ? Math.round(rawDpp * 1.11) : Math.round(rawDpp);
         }
         return currentHrg;
+      });
+
+      // Sinkronkan calculatedParams agar tidak memicu stale palsu saat toggle PPN
+      setSpandukCalculatedParams(prev => {
+        if (!prev) return prev;
+        const parts = prev.split('|');
+        if (parts.length >= 7) {
+          parts[5] = String(nextPpn);
+          return parts.join('|');
+        }
+        return prev;
+      });
+      setMmtCalculatedParams(prev => {
+        if (!prev) return prev;
+        const parts = prev.split('|');
+        if (parts.length >= 12) {
+          parts[10] = String(nextPpn);
+          return parts.join('|');
+        }
+        return prev;
+      });
+      setGarmenCalculatedParams(prev => {
+        if (!prev) return prev;
+        const parts = prev.split('|');
+        if (parts.length >= 9) {
+          parts[7] = String(nextPpn);
+          return parts.join('|');
+        }
+        return prev;
       });
 
       return nextPpn;
@@ -848,14 +880,17 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
   const [garmenCalculatedParams, setGarmenCalculatedParams] =
     useState<string>('');
 
-  const currentSpandukParamsKey = `${mh_panjang}|${mh_jmlorder}|${spandukMetode}|${spandukLebar}|${spandukJenisKain}|${isIncPpn}`;
+  const activeSpandukLebar =
+    (toNumDecimal(mh_lebar) > 0 ? toNumDecimal(mh_lebar) : spandukLebar) || 90;
+  const activeSpandukKain = spandukJenisKain || mh_kain || 'POLYESTER 50/36';
+  const currentSpandukParamsKey = `${mh_panjang}|${mh_jmlorder}|${spandukMetode}|${activeSpandukLebar}|${activeSpandukKain}|${isIncPpn}|${calculatedOngkir.ongkirPerPcs}`;
   const isSpandukStale = Boolean(
     spandukResult &&
       spandukCalculatedParams &&
       spandukCalculatedParams !== currentSpandukParamsKey,
   );
 
-  const currentMmtParamsKey = `${mh_panjang}|${mh_lebar}|${mh_jmlorder}|${mmtKategori}|${mmtBahanKode}|${mmtToppingKode}|${mmtToppingQty}|${mmtIsNetto}|${mmtSelongsongVert}|${mmtSelongsongHoriz}|${isIncPpn}`;
+  const currentMmtParamsKey = `${mh_panjang}|${mh_lebar}|${mh_jmlorder}|${mmtKategori}|${mmtBahanKode}|${mmtToppingKode}|${mmtToppingQty}|${mmtIsNetto}|${mmtSelongsongVert}|${mmtSelongsongHoriz}|${isIncPpn}|${calculatedOngkir.ongkirPerPcs}`;
   const isMmtStale = Boolean(
     mmtResult &&
       mmtCalculatedParams &&
@@ -871,7 +906,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
       .map(c => `${c.jenis}:${c.ket}:${c.biaya}`)
       .sort()
       .join(';');
-    return `${garmenKodeModel}|${garmenJenisKain}|${garmenWarna}|${mh_jmlorder}|${garmenWorkshop}|${tambahanKey}|${cetakKey}|${isIncPpn}`;
+    return `${garmenKodeModel}|${garmenJenisKain}|${garmenWarna}|${mh_jmlorder}|${garmenWorkshop}|${tambahanKey}|${cetakKey}|${isIncPpn}|${calculatedOngkir.ongkirPerPcs}`;
   }, [
     garmenKodeModel,
     garmenJenisKain,
@@ -881,6 +916,7 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     garmenSelectedTambahan,
     garmenSelectedCetak,
     isIncPpn,
+    calculatedOngkir.ongkirPerPcs,
   ]);
 
   const isGarmenStale = Boolean(
@@ -1209,11 +1245,14 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
     };
   }, [mh_divisi, garmenJenisKain, garmenKodeModel, token, garmenKategoriKain]);
 
-  // Memuat master cetak / sablon
+  // Memuat master cetak / sablon terfilter berdasarkan jenis kain & kategori
   useEffect(() => {
     if (mh_divisi !== '4') return;
     let isMounted = true;
-    getCetakOptionsApi(token)
+    getCetakOptionsApi(token, {
+      jenisKain: garmenJenisKain,
+      kategori: garmenKategoriKain,
+    })
       .then((cetak: any[]) => {
         if (!isMounted) return;
         if (Array.isArray(cetak)) {
@@ -1231,13 +1270,32 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
           if (bordirItem?.mhb_cm) {
             setBordirTarifCm(String(bordirItem.mhb_cm));
           }
+
+          // Sinkronkan item cetak terpilih jika ada di master baru
+          setGarmenSelectedCetak(prev =>
+            prev.map(selected => {
+              const matched = cetak.find(
+                (c: any) =>
+                  (c.mhb_ket || c.ket || c.nama || '') === selected.ket &&
+                  (c.mhb_jenis || c.jenis || '').toUpperCase() ===
+                    selected.jenis.toUpperCase(),
+              );
+              if (matched) {
+                return {
+                  ...selected,
+                  biaya: Number(matched.biaya ?? matched.mhb_biaya ?? 0),
+                };
+              }
+              return selected;
+            }),
+          );
         }
       })
       .catch(() => {});
     return () => {
       isMounted = false;
     };
-  }, [mh_divisi, token]);
+  }, [mh_divisi, token, garmenJenisKain, garmenKategoriKain]);
 
   const handleHitungGarmen = async () => {
     const qty = toNumCurrency(mh_jmlorder);
@@ -3306,34 +3364,80 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 </TouchableOpacity>
               </View>
 
-              {/* Mode Selector Konsisten dengan Divisi Chip */}
+              {/* Mode Selector Konsisten: Tanpa Ongkir | Kota Standar | Manual */}
               <View style={[styles.divisiRow, { marginBottom: 10 }]}>
+                {/* Opsi 1: Tanpa Ongkir */}
                 <TouchableOpacity
                   style={[
                     styles.divisiChip,
                     { flex: 1 },
-                    !isCustomOngkir && styles.divisiChipActive,
+                    !isCustomOngkir &&
+                      alokasiOngkir.toLowerCase() === 'tanpa ongkir' &&
+                      styles.divisiChipActive,
                   ]}
-                  onPress={() => setIsCustomOngkir(false)}
+                  onPress={() => {
+                    setAlokasiOngkir('Tanpa Ongkir');
+                    setIsCustomOngkir(false);
+                    setCustomOngkirVal('');
+                    setMhOngkir('0');
+                  }}
                   activeOpacity={0.8}
                 >
                   <Text
                     style={[
                       styles.divisiChipText,
-                      !isCustomOngkir && styles.divisiChipTextActive,
+                      !isCustomOngkir &&
+                        alokasiOngkir.toLowerCase() === 'tanpa ongkir' &&
+                        styles.divisiChipTextActive,
+                    ]}
+                  >
+                    Tanpa Ongkir
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Opsi 2: Kota Standar */}
+                <TouchableOpacity
+                  style={[
+                    styles.divisiChip,
+                    { flex: 1 },
+                    !isCustomOngkir &&
+                      alokasiOngkir.toLowerCase() !== 'tanpa ongkir' &&
+                      styles.divisiChipActive,
+                  ]}
+                  onPress={() => {
+                    if (
+                      alokasiOngkir.toLowerCase() === 'tanpa ongkir' ||
+                      !alokasiOngkir
+                    ) {
+                      setAlokasiOngkir('Jakarta');
+                    }
+                    setIsCustomOngkir(false);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.divisiChipText,
+                      !isCustomOngkir &&
+                        alokasiOngkir.toLowerCase() !== 'tanpa ongkir' &&
+                        styles.divisiChipTextActive,
                     ]}
                   >
                     Kota Standar
                   </Text>
                 </TouchableOpacity>
 
+                {/* Opsi 3: Custom / Manual */}
                 <TouchableOpacity
                   style={[
                     styles.divisiChip,
                     { flex: 1 },
                     isCustomOngkir && styles.divisiChipActive,
                   ]}
-                  onPress={() => setIsCustomOngkir(true)}
+                  onPress={() => {
+                    setIsCustomOngkir(true);
+                    setAlokasiOngkir('Custom');
+                  }}
                   activeOpacity={0.8}
                 >
                   <Text
@@ -3342,12 +3446,48 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                       isCustomOngkir && styles.divisiChipTextActive,
                     ]}
                   >
-                    Custom / Manual
+                    Manual
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              {!isCustomOngkir ? (
+              {!isCustomOngkir &&
+              alokasiOngkir.toLowerCase() === 'tanpa ongkir' ? (
+                <View
+                  style={{
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: '#e2e8f0',
+                    padding: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}
+                >
+                  <MaterialIcons
+                    name="check-circle"
+                    size={22}
+                    color="#16a34a"
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: THEME.ink,
+                      }}
+                    >
+                      Tanpa Biaya Ongkir (Rp 0)
+                    </Text>
+                    <Text
+                      style={{ fontSize: 11.5, color: '#64748b', marginTop: 1 }}
+                    >
+                      Harga kalkulasi murni tanpa tambahan beban ongkos kirim.
+                    </Text>
+                  </View>
+                </View>
+              ) : !isCustomOngkir ? (
                 <View>
                   {/* Selector Kota */}
                   <View style={styles.fieldWrap}>
@@ -7870,41 +8010,6 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                   </View>
                 </View>
 
-                {/* Panduan Ukuran Sablon Standar */}
-                {cetakActiveCategory === 'SABLON' && (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      backgroundColor: '#eff6ff',
-                      borderRadius: 8,
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
-                      marginHorizontal: 16,
-                      marginBottom: 8,
-                      gap: 6,
-                      borderWidth: 1,
-                      borderColor: '#bfdbfe',
-                    }}
-                  >
-                    <MaterialIcons name="straighten" size={16} color="#2563eb" />
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        color: '#1e40af',
-                        flex: 1,
-                        fontWeight: '500',
-                        lineHeight: 16,
-                      }}
-                    >
-                      Keterangan Ukuran:{' '}
-                      <Text style={{ fontWeight: '700' }}>A3</Text> (29.7 × 42 cm) •{' '}
-                      <Text style={{ fontWeight: '700' }}>A4</Text> (21 × 29.7 cm) •{' '}
-                      <Text style={{ fontWeight: '700' }}>A5</Text> (14.8 × 21 cm)
-                    </Text>
-                  </View>
-                )}
-
                 {/* List Item Bersih & Ringan */}
                 <FlatList
                   data={garmenCetakMaster.filter((cItem: any) => {
@@ -8404,6 +8509,80 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                 paddingHorizontal: 16,
                 paddingBottom: 20,
               }}
+              ListHeaderComponent={
+                !searchOngkirQuery.trim() ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.ongkirCityItemCard,
+                      !isCustomOngkir &&
+                        alokasiOngkir.toLowerCase() === 'tanpa ongkir' &&
+                        styles.ongkirCityItemCardActive,
+                      { marginBottom: 8, borderColor: '#86efac' },
+                    ]}
+                    onPress={() => {
+                      setAlokasiOngkir('Tanpa Ongkir');
+                      setIsCustomOngkir(false);
+                      setCustomOngkirVal('');
+                      setMhOngkir('0');
+                      setModalOngkirVisible(false);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.ongkirCityItemTitle,
+                            { color: '#15803d' },
+                          ]}
+                        >
+                          Tanpa Ongkir
+                        </Text>
+                        <View
+                          style={[
+                            styles.ongkirCityItemBadge,
+                            { backgroundColor: '#dcfce7' },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.ongkirCityItemBadgeText,
+                              { color: '#15803d' },
+                            ]}
+                          >
+                            Rp 0
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.ongkirCityItemDetail}>
+                        Tidak dibebankan ongkos kirim pada kalkulasi
+                      </Text>
+                    </View>
+
+                    <MaterialIcons
+                      name={
+                        !isCustomOngkir &&
+                        alokasiOngkir.toLowerCase() === 'tanpa ongkir'
+                          ? 'radio-button-checked'
+                          : 'radio-button-unchecked'
+                      }
+                      size={22}
+                      color={
+                        !isCustomOngkir &&
+                        alokasiOngkir.toLowerCase() === 'tanpa ongkir'
+                          ? '#16a34a'
+                          : '#cbd5e1'
+                      }
+                    />
+                  </TouchableOpacity>
+                ) : null
+              }
               renderItem={({ item }) => {
                 const isSelected =
                   !isCustomOngkir &&
