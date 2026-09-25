@@ -5774,8 +5774,18 @@ export default function PermintaanHargaFormScreen({ navigation, route }: any) {
                             </Text>
                           </View>
                           {(
-                            garmenCalcResult.tabelReferensi ||
-                            garmenCalcResult.tanggaMargin
+                            (
+                              garmenCalcResult.tabelReferensi ||
+                              garmenCalcResult.tanggaMargin ||
+                              []
+                            ).filter(
+                              (item: any, i: number, arr: any[]) =>
+                                arr.findIndex(
+                                  (x: any) =>
+                                    (x.qmin ?? x.minOrder ?? 0) ===
+                                    (item.qmin ?? item.minOrder ?? 0),
+                                ) === i,
+                            )
                           ).map((tier: any, idx: number) => {
                             const qmin = tier.qmin ?? tier.minOrder ?? 0;
                             const qmax = tier.qmax ?? tier.maxOrder ?? 999999;
